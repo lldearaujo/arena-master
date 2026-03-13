@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Arena Master",
+    "slug": "arena-master",
+    "scheme": "arena-master",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#020617"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app precisa acessar suas fotos para definir o avatar do perfil."
+        }
+      ]
+    ],
+    "experiments": {}
+  }
+}
+

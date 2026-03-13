@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: arena-master-db
+    environment:
+      POSTGRES_USER: arena_master
+      POSTGRES_PASSWORD: arena_master_password
+      POSTGRES_DB: arena_master
+    ports:
+      - "4866:5432"
+    volumes:
+      - arena_master_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: python:3.11-slim
+    container_name: arena-master-backend
+    working_dir: /app/backend
+    command: bash -c "pip install --no-cache-dir -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./:/app
+    env_file:
+      - .env.example
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+volumes:
+  arena_master_db_data:
+

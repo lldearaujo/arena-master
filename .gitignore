@@ -1,0 +1,37 @@
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+
+# Virtualenvs
+.venv/
+.vev/
+venv/
+
+# Node / Expo
+node_modules/
+npm-cache/
+.expo/
+.expo-shared/
+.turbo/
+dist/
+build/
+web/dist/
+web/build/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
