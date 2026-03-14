@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "./store/auth";
 import { LoginPage } from "./features/auth/LoginPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { MuralPage } from "./features/mural/MuralPage";
 import { DojosPage } from "./features/dojos/DojosPage";
 import { SuperAdminProfessoresPage } from "./features/superadmin/SuperAdminProfessoresPage";
 import { SuperAdminStudentsPage } from "./features/superadmin/SuperAdminStudentsPage";
@@ -11,6 +12,7 @@ import { StudentsPage } from "./features/students/StudentsPage";
 import { TurmasPage } from "./features/turmas/TurmasPage";
 import { CheckInsPage } from "./features/checkins/CheckInsPage";
 import { FaixasPage } from "./features/faixas/FaixasPage";
+import { SettingsPage } from "./features/settings/SettingsPage";
 import { AppShell } from "./ui/AppShell";
 
 type PrivateRouteProps = {
@@ -77,6 +79,14 @@ export function App() {
         }
       />
       <Route
+        path="/mural"
+        element={
+          <PrivateRoute allowedRoles={["admin"]}>
+            <MuralPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/dojos"
         element={
           <PrivateRoute allowedRoles={["superadmin"]}>
@@ -129,6 +139,14 @@ export function App() {
         element={
           <PrivateRoute allowedRoles={["admin"]}>
             <CheckInsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/configuracoes"
+        element={
+          <PrivateRoute allowedRoles={["admin"]}>
+            <SettingsPage />
           </PrivateRoute>
         }
       />

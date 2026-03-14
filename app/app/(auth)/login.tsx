@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Stack, useRouter } from "expo-router";
-import { View, Text, TextInput, Pressable } from "react-native";
+import { View, Text, TextInput, Pressable, Image } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 
 import { api, persistSession } from "../../src/api/client";
 import { Role, useAuthStore } from "../../src/store/auth";
 import { tokens } from "../../src/ui/tokens";
+
+const arenaMasterLogo = require("../../assets/arena-master-logo.png");
 
 type LoginResponse = {
   access_token: string;
@@ -49,103 +51,132 @@ export default function LoginScreen() {
       await persistSession();
       router.replace("/(tabs)");
     },
-    onError: () => {
-      setError("Falha ao entrar. Verifique suas credenciais.");
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error
+          ? (err as { response?: { data?: { detail?: string } } })?.response?.data
+              ?.detail ?? err.message
+          : "Falha ao entrar. Verifique suas credenciais.";
+      setError(message);
     },
   });
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: tokens.color.bgBody,
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: 24,
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: tokens.color.bgCard }}>
       <Stack.Screen options={{ headerShown: false }} />
-      <Text
-        style={{
-          color: tokens.color.textOnPrimary,
-          fontSize: tokens.text["2xl"],
-          fontWeight: "700",
-          marginBottom: tokens.space.lg,
-        }}
-      >
-        Arena Master
-      </Text>
+
+      {/* Topo: faixa dourada com logo */}
       <View
         style={{
-          width: "100%",
-          maxWidth: 360,
-          padding: tokens.space.lg,
-          borderRadius: tokens.radius.lg,
-          backgroundColor: "white",
+          backgroundColor: tokens.color.primary,
+          borderBottomLeftRadius: tokens.radius.lg,
+          borderBottomRightRadius: tokens.radius.lg,
+          paddingTop: 48,
+          paddingBottom: 32,
+          paddingHorizontal: tokens.space.xl,
+          alignItems: "center",
+        }}
+      >
+        <Image
+          source={arenaMasterLogo}
+          style={{ width: 203, height: 203 }}
+          resizeMode="contain"
+        />
+      </View>
+
+      {/* Conteúdo: área azul escura com formulário */}
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: tokens.space.xl,
+          paddingTop: tokens.space.xl,
         }}
       >
         <Text
           style={{
-            fontSize: tokens.text.lg,
-            marginBottom: tokens.space.md,
+            color: tokens.color.textOnPrimary,
+            fontSize: tokens.text.xl,
+            fontWeight: "900",
+            letterSpacing: 0.5,
+            marginBottom: tokens.space.lg,
+            textAlign: "center",
           }}
         >
-          Entrar
+          BEM-VINDO
         </Text>
+
         <TextInput
-          placeholder="E-mail"
+          placeholder="Telefone/Email"
+          placeholderTextColor="rgba(255,255,255,0.6)"
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
           style={{
+            backgroundColor: "rgba(255,255,255,0.08)",
             borderWidth: 1,
-            borderColor: tokens.color.borderSubtle,
+            borderColor: "rgba(255,255,255,0.3)",
             borderRadius: tokens.radius.md,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-            marginBottom: tokens.space.sm,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: tokens.space.md,
+            fontSize: tokens.text.md,
+            color: tokens.color.textOnPrimary,
           }}
         />
+
         <TextInput
           placeholder="Senha"
+          placeholderTextColor="rgba(255,255,255,0.6)"
           secureTextEntry
           value={password}
           onChangeText={setPassword}
           style={{
+            backgroundColor: "rgba(255,255,255,0.08)",
             borderWidth: 1,
-            borderColor: tokens.color.borderSubtle,
+            borderColor: "rgba(255,255,255,0.3)",
             borderRadius: tokens.radius.md,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-            marginBottom: tokens.space.xs,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: tokens.space.sm,
+            fontSize: tokens.text.md,
+            color: tokens.color.textOnPrimary,
           }}
         />
+
         {error && (
           <Text
             style={{
               color: tokens.color.error,
               fontSize: tokens.text.sm,
-              marginBottom: tokens.space.xs,
+              marginBottom: tokens.space.sm,
             }}
           >
             {error}
           </Text>
         )}
+
         <Pressable
           onPress={() => mutation.mutate()}
           style={{
             backgroundColor: tokens.color.primary,
-            paddingVertical: 10,
-            borderRadius: tokens.radius.md,
+            paddingVertical: 14,
+            borderRadius: tokens.radius.lg,
             alignItems: "center",
-            marginTop: tokens.space.sm,
+            marginTop: tokens.space.md,
           }}
         >
-          <Text style={{ color: "white", fontWeight: "600" }}>
+          <Text
+            style={{
+              color: tokens.color.textOnPrimary,
+              fontWeight: "700",
+              fontSize: tokens.text.md,
+            }}
+          >
             {mutation.isPending ? "Entrando..." : "Entrar"}
           </Text>
         </Pressable>
+
       </View>
     </View>
   );

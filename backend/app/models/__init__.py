@@ -7,4 +7,5 @@ from app.models.student_guardian import StudentGuardian  # noqa: F401
 from app.models.turma import Turma  # noqa: F401
 from app.models.turma_enrollment import TurmaEnrollment  # noqa: F401
 from app.models.user import User  # noqa: F401
+from app.models.mural_post import MuralPost  # noqa: F401
 

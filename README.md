@@ -162,7 +162,7 @@ O app está configurado para consumir a API em `http://localhost:8000` (ajuste n
 - Login do **aluno** ou **responsável**.
 - Abas principais:
   - **Minhas turmas** – turmas do aluno, check-in/cancelamento, vagas restantes.
-  - **Turmas dos filhos** – check-in para filhos (KIDS).
+  - **Turma kids** – check-in para filhos (KIDS).
   - **Perfil** – avatar/foto de perfil, papel, graduação atual.
 - Tela de **presenças da turma**:
   - ao tocar no card da turma, exibe lista de alunos presentes com:

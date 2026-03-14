@@ -57,6 +57,33 @@ async def list_my_checkins(
     return [schemas.CheckInRead.model_validate(c) for c in checkins]
 
 
+@router.get("/my/range", response_model=list[schemas.CheckInRead])
+async def list_my_checkins_range(
+    user: UserDep,
+    session: SessionDep,
+    start_date: str = Query(..., description="YYYY-MM-DD"),
+    end_date: str = Query(..., description="YYYY-MM-DD"),
+) -> list[schemas.CheckInRead]:
+    """Retorna os check-ins do aluno no intervalo de datas (para assiduidade)."""
+    from datetime import date as _date
+
+    try:
+        start = _date.fromisoformat(start_date)
+        end = _date.fromisoformat(end_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Datas inválidas. Use formato YYYY-MM-DD.",
+        ) from None
+    if start > end:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date deve ser anterior a end_date.",
+        )
+    checkins = await service.list_my_checkins_in_range(session, user, start, end)
+    return [schemas.CheckInRead.model_validate(c) for c in checkins]
+
+
 @router.delete("/{checkin_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_checkin(
     checkin_id: int,

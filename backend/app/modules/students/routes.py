@@ -31,6 +31,7 @@ async def _student_to_read(
         email=student.email,
         phone=student.phone,
         birth_date=student.birth_date,
+        modalidade=student.modalidade,
         notes=student.notes,
         faixa_id=student.faixa_id,
         grau=student.grau,

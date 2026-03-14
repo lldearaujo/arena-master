@@ -1,11 +1,34 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import Constants from "expo-constants";
 
 import { useAuthStore } from "../store/auth";
 
+function resolveBaseUrl(): string {
+  // Web continua apontando para localhost do navegador
+  if (Platform.OS === "web") {
+    return "http://localhost:8000";
+  }
+
+  // Se o .env do app definir EXPO_PUBLIC_API_URL, ele tem prioridade
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  // Em dispositivos/Expo Go, usamos o host do próprio servidor Expo
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(":")[0]; // ex: "192.168.0.10:19000" -> "192.168.0.10"
+    return `http://${host}:8000`;
+  }
+
+  // Fallback final
+  return "http://localhost:8000";
+}
+
 export const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: resolveBaseUrl(),
 });
 
 api.interceptors.request.use((config) => {

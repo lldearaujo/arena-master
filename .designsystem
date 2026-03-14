@@ -1,0 +1,21 @@
+# ARENA MASTER - DESIGN SYSTEM SPEC
+
+## COLORS
+- Primary (Gold): #B89E5D
+- Background (Deep Blue): #1B303F
+- Surface (Paper White): #F4F1E8
+- Error (Red): #D9534F
+
+## TYPOGRAPHY
+- Headings: Montserrat Black (Uppercase)
+- Subtitles/Buttons: Oswald Bold
+- Body: Inter Regular
+
+## COMPONENTS
+- Primary Button: Background Gold, Text Deep Blue, Radius 8px.
+- Cards: Background Paper White, Radius 12px, Seigaiha (Wave) Texture 5% opacity.
+- Inputs: Background Deep Blue, Border 1px Gold, Text Paper White.
+
+## ICONOGRAPHY
+- Style: Line Art (2px stroke)
+- Themes: Torii Gate, Cranes, Fists, Trophies.

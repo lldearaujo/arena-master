@@ -47,6 +47,9 @@ async def update_me(
                 detail="Imagem muito grande. Escolha uma foto menor.",
             )
         user.avatar_url = url
+    if payload.name is not None:
+        user.name = payload.name.strip() or None
+    if payload.avatar_url is not None or payload.name is not None:
         await session.commit()
         await session.refresh(user)
     return await _user_me_read(user, session)

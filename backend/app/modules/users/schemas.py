@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class UserMeRead(BaseModel):
     id: int
     email: str
+    name: str | None = None
     role: str
     dojo_id: int | None
     avatar_url: str | None = None
@@ -15,3 +16,4 @@ class UserMeRead(BaseModel):
 
 class AvatarUpdate(BaseModel):
     avatar_url: str | None = None
+    name: str | None = None

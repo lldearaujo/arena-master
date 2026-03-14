@@ -293,6 +293,44 @@ async def list_my_checkins(
     return list(res.scalars().all())
 
 
+async def list_my_checkins_in_range(
+    session: AsyncSession,
+    user: User,
+    start_date: date,
+    end_date: date,
+) -> list[CheckIn]:
+    """Retorna os check-ins do aluno nos últimos N dias (para cálculo de assiduidade)."""
+    if user.dojo_id is None or user.role != "aluno":
+        return []
+
+    result = await session.execute(
+        select(Student).where(
+            and_(
+                Student.user_id == user.id,
+                Student.dojo_id == user.dojo_id,
+            )
+        )
+    )
+    self_student = result.scalar_one_or_none()
+    if self_student is None:
+        return []
+
+    q = (
+        select(CheckIn)
+        .where(
+            and_(
+                CheckIn.dojo_id == user.dojo_id,
+                CheckIn.student_id == self_student.id,
+                func.date(CheckIn.occurred_at) >= start_date,
+                func.date(CheckIn.occurred_at) <= end_date,
+            )
+        )
+        .order_by(CheckIn.occurred_at.desc())
+    )
+    res = await session.execute(q)
+    return list(res.scalars().all())
+
+
 async def list_checkins(
     session: AsyncSession,
     dojo_id: int,

@@ -9,6 +9,7 @@ RoleLiteral = Literal["superadmin", "admin", "aluno"]
 class UserRead(BaseModel):
     id: int
     email: str
+    name: str | None = None
     role: RoleLiteral
     dojo_id: int | None = None
     avatar_url: str | None = None

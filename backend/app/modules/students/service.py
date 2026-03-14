@@ -50,6 +50,7 @@ async def create_student(
         email=data.email,
         phone=data.phone,
         birth_date=data.birth_date,
+        modalidade=data.modalidade,
         notes=data.notes,
         faixa_id=data.faixa_id,
         grau=data.grau,
@@ -76,6 +77,7 @@ async def create_student(
         password_hash=password_hash,
         role="aluno",
         dojo_id=dojo_id,
+        name=student.name,
         is_active=True,
     )
     session.add(user)
@@ -223,8 +225,9 @@ async def get_student_for_user(
     session: AsyncSession,
     user: User,
 ) -> Student | None:
-    if user.role != "aluno":
+    if user.role != "aluno" or user.dojo_id is None:
         return None
+    # 1) Busca por user_id (vínculo direto)
     result = await session.execute(
         select(Student).where(
             and_(
@@ -233,7 +236,39 @@ async def get_student_for_user(
             )
         )
     )
-    return result.scalar_one_or_none()
+    student = result.scalar_one_or_none()
+    if student is not None:
+        return student
+    # 2) Fallback: busca por email no mesmo dojo
+    result = await session.execute(
+        select(Student).where(
+            and_(
+                Student.dojo_id == user.dojo_id,
+                Student.email == user.email,
+            )
+        )
+    )
+    student = result.scalar_one_or_none()
+    if student is not None:
+        return student
+    # 3) Fallback: login padrão é "nomestudante@nomdojo" - encontra aluno pelo padrão
+    dojo = await session.get(Dojo, user.dojo_id)
+    dojo_slug = (dojo.name.strip().lower().replace(" ", "") if dojo else "") or str(user.dojo_id)
+    if "@" not in user.email:
+        return None
+    result = await session.execute(
+        select(Student).where(
+            and_(
+                Student.dojo_id == user.dojo_id,
+                Student.user_id.is_(None),
+            )
+        )
+    )
+    for s in result.scalars().all():
+        slug = s.name.strip().lower().replace(" ", "")
+        if f"{slug}@{dojo_slug}" == user.email.lower():
+            return s
+    return None
 
 
 def _format_graduacao(faixa: Faixa | None, grau: int) -> str | None:

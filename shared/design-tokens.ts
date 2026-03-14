@@ -1,17 +1,23 @@
 export const tokens = {
   color: {
-    primary: "#ef4444",
-    primaryDark: "#b91c1c",
-    bgBody: "#020617",
-    bgCard: "#0f172a",
-    textOnPrimary: "#ffffff",
+    // Arena Master design system
+    // Paleta principal inspirada no material de identidade visual:
+    // - Arena Gold (Primary CTA)
+    // - Deep Blue (Superfícies principais)
+    // - Paper Off‑White (Background)
+    // - Alert Red (Estados de alerta)
+    primary: "#B89E5D", // Arena Gold
+    primaryDark: "#8C7440",
+    bgBody: "#F4F1E8", // Paper Off‑White
+    bgCard: "#1B303F", // Deep Blue
+    textOnPrimary: "#FFFFFF",
     textPrimary: "#111827",
     textMuted: "#6b7280",
-    borderSubtle: "#e5e7eb",
-    borderStrong: "#1f2937",
-    kids: "#facc15",
-    success: "#22c55e",
-    error: "#ef4444",
+    borderSubtle: "#E0D6C4",
+    borderStrong: "#13202B",
+    kids: "#FACC15",
+    success: "#22C55E",
+    error: "#D9534F", // Alert Red
   },
   space: {
     xs: 4,

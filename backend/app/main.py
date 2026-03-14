@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.modules.auth.routes import router as auth_router
@@ -10,6 +13,7 @@ from app.modules.turmas.routes import router as turmas_router
 from app.modules.check_in.routes import router as checkin_router
 from app.modules.faixas.routes import router as faixas_router
 from app.modules.users.routes import router as users_router
+from app.modules.mural.routes import router as mural_router
 
 
 def create_app() -> FastAPI:
@@ -44,6 +48,11 @@ def create_app() -> FastAPI:
     app.include_router(checkin_router, prefix="/api/check-in", tags=["check-in"])
     app.include_router(faixas_router, prefix="/api/faixas", tags=["faixas"])
     app.include_router(users_router, prefix="/api/users", tags=["users"])
+    app.include_router(mural_router, prefix="/api/mural", tags=["mural"])
+
+    static_dir = Path(__file__).resolve().parents[1] / "static"
+    static_dir.mkdir(exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     @app.get("/health", tags=["health"])
     async def health() -> dict:

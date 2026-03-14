@@ -2,18 +2,18 @@
 // de resolução de caminhos no bundler Metro do React Native.
 export const tokens = {
   color: {
-    primary: "#ef4444",
-    primaryDark: "#b91c1c",
-    bgBody: "#020617",
-    bgCard: "#0f172a",
-    textOnPrimary: "#ffffff",
+    primary: "#B89E5D",
+    primaryDark: "#8C7440",
+    bgBody: "#F4F1E8",
+    bgCard: "#1B303F",
+    textOnPrimary: "#FFFFFF",
     textPrimary: "#111827",
     textMuted: "#6b7280",
-    borderSubtle: "#e5e7eb",
-    borderStrong: "#1f2937",
-    kids: "#facc15",
-    success: "#22c55e",
-    error: "#ef4444",
+    borderSubtle: "#E0D6C4",
+    borderStrong: "#13202B",
+    kids: "#FACC15",
+    success: "#22C55E",
+    error: "#D9534F",
   },
   space: {
     xs: 4,

@@ -18,6 +18,7 @@ type Student = {
   name: string;
   email: string | null;
   phone: string | null;
+  modalidade?: string | null;
   user_id?: number | null;
   login_email?: string | null;
   faixa_id?: number | null;
@@ -36,6 +37,7 @@ type StudentPayload = {
   name: string;
   email?: string | null;
   phone?: string | null;
+  modalidade?: string | null;
   faixa_id?: number | null;
   grau?: number;
 };
@@ -68,6 +70,7 @@ export function StudentsPage() {
     name: "",
     email: "",
     phone: "",
+    modalidade: "",
     faixa_id: null,
     grau: 0,
   });
@@ -86,13 +89,14 @@ export function StudentsPage() {
       if (editingId) {
         await api.put(`/api/students/${editingId}`, {
           ...form,
+          modalidade: form.modalidade || null,
           faixa_id: form.faixa_id ?? null,
           grau: form.grau ?? 0,
         });
       } else {
         const res = await api.post<StudentCreatedResponse>(
           "/api/students",
-          { ...form, faixa_id: form.faixa_id ?? null, grau: form.grau ?? 0 },
+          { ...form, modalidade: form.modalidade || null, faixa_id: form.faixa_id ?? null, grau: form.grau ?? 0 },
         );
         const { student, initial_password, login_email } = res.data;
         const loginEmail = login_email;
@@ -104,7 +108,7 @@ export function StudentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      setForm({ name: "", email: "", phone: "", faixa_id: null, grau: 0 });
+      setForm({ name: "", email: "", phone: "", modalidade: "", faixa_id: null, grau: 0 });
       setEditingId(null);
       setFormError(null);
     },
@@ -133,6 +137,7 @@ export function StudentsPage() {
       name: student.name,
       email: student.email ?? "",
       phone: student.phone ?? "",
+      modalidade: student.modalidade ?? "",
       faixa_id: student.faixa_id ?? null,
       grau: student.grau ?? 0,
     });
@@ -140,7 +145,7 @@ export function StudentsPage() {
 
   const resetForm = () => {
     setEditingId(null);
-    setForm({ name: "", email: "", phone: "", faixa_id: null, grau: 0 });
+    setForm({ name: "", email: "", phone: "", modalidade: "", faixa_id: null, grau: 0 });
     setFormError(null);
   };
 
@@ -235,6 +240,16 @@ export function StudentsPage() {
             />
           </label>
           <label>
+            <span>Modalidade</span>
+            <input
+              type="text"
+              placeholder="Ex: Jiu-Jitsu, Muay Thai"
+              value={form.modalidade ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, modalidade: e.target.value }))}
+              style={{ width: "100%", padding: 8, marginTop: 4 }}
+            />
+          </label>
+          <label>
             <span>Faixa</span>
             <select
               value={form.faixa_id ?? ""}
@@ -315,6 +330,7 @@ export function StudentsPage() {
           <thead>
             <tr>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Nome</th>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Modalidade</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Graduação</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>E-mail</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Telefone</th>
@@ -325,6 +341,9 @@ export function StudentsPage() {
             {data.map((student) => (
               <tr key={student.id}>
                 <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>{student.name}</td>
+                <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>
+                  {student.modalidade ?? "-"}
+                </td>
                 <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>
                   {student.graduacao ?? "-"}
                 </td>

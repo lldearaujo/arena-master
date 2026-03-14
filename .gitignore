@@ -30,6 +30,9 @@ web/build/
 # Logs
 *.log
 
+# Expo/React Native artifacts
+com.facebook.react.fabric.mounting.mountitems.PreAllocateViewMountItem
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -8,6 +8,7 @@ class StudentBase(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     birth_date: date | None = None
+    modalidade: str | None = None
     notes: str | None = None
 
 
@@ -22,6 +23,7 @@ class StudentUpdate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     birth_date: date | None = None
+    modalidade: str | None = None
     notes: str | None = None
     faixa_id: int | None = None
     grau: int | None = None

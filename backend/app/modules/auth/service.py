@@ -101,6 +101,7 @@ async def register_student_user(
         password_hash=password_hash,
         role=data.role,
         dojo_id=dojo_id,
+        name=data.name,
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),

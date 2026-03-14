@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { useAuthStore } from "../store/auth";
 import { tokens } from "./tokens";
+import arenaMasterLogo from "../assets/arena-master-logo.png";
 
 type AppShellProps = {
   children: ReactNode;
@@ -24,19 +25,17 @@ export function AppShell({ children }: AppShellProps) {
       <aside
         style={{
           width: 220,
-          backgroundColor: tokens.color.bgBody,
+          backgroundColor: tokens.color.bgCard,
           color: tokens.color.textOnPrimary,
           padding: `${tokens.space.md}px ${tokens.space.sm}px`,
         }}
       >
-        <div
-          style={{
-            fontSize: tokens.text.lg,
-            fontWeight: 600,
-            marginBottom: tokens.space.lg,
-          }}
-        >
-          Arena Master
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: tokens.space.lg }}>
+          <img
+            src={arenaMasterLogo}
+            alt="Arena Master"
+            style={{ width: "100%", maxWidth: 160, height: "auto" }}
+          />
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Link
@@ -79,6 +78,15 @@ export function AppShell({ children }: AppShellProps) {
                 Faixas
               </Link>
               <Link
+                to="/mural"
+                style={{
+                  color: tokens.color.textOnPrimary,
+                  textDecoration: "none",
+                }}
+              >
+                Mural
+              </Link>
+              <Link
                 to="/students"
                 style={{
                   color: tokens.color.textOnPrimary,
@@ -104,6 +112,15 @@ export function AppShell({ children }: AppShellProps) {
                 }}
               >
                 Check-ins
+              </Link>
+              <Link
+                to="/configuracoes"
+                style={{
+                  color: tokens.color.textOnPrimary,
+                  textDecoration: "none",
+                }}
+              >
+                Configurações
               </Link>
             </>
           )}

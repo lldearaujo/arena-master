@@ -1,8 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { View, Text, FlatList, Pressable } from "react-native";
+import { View, Text, FlatList, Pressable, Image, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "../../src/api/client";
+import { tokens } from "../../src/ui/tokens";
+
+type Dojo = {
+  id: number;
+  name: string;
+  logo_url: string | null;
+};
 
 type CheckInRead = {
   id: number;
@@ -28,9 +36,22 @@ type KidTurma = {
   };
 };
 
-export default function FilhosScreen() {
+export default function TurmaKidsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
+  const { data: dojo } = useQuery({
+    queryKey: ["dojo-me"],
+    queryFn: async () => {
+      const res = await api.get<Dojo>("/api/dojos/me");
+      return res.data;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["kids-turmas"],
     queryFn: async () => {
@@ -78,137 +99,281 @@ export default function FilhosScreen() {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#020617", padding: 16 }}>
-      <Text
+    <View style={{ flex: 1, backgroundColor: tokens.color.bgBody }}>
+      {/* Header com logo do Dojo */}
+      <View
         style={{
-          color: "white",
-          fontSize: 22,
-          fontWeight: "600",
-          marginBottom: 12,
+          backgroundColor: tokens.color.bgCard,
+          borderBottomLeftRadius: tokens.radius.lg * 2,
+          borderBottomRightRadius: tokens.radius.lg * 2,
+          paddingTop: insets.top + tokens.space.md,
+          paddingBottom: tokens.space.xl,
+          paddingHorizontal: tokens.space.lg,
+          alignItems: "center",
+          shadowColor: tokens.color.textPrimary,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          elevation: 4,
         }}
       >
-        Turmas dos filhos
-      </Text>
-      {isLoading && <Text style={{ color: "white" }}>Carregando...</Text>}
-      {error && (
-        <Text style={{ color: "#fecaca" }}>
-          Erro ao carregar turmas KIDS. Verifique sua conexão.
-        </Text>
-      )}
-      {data && (
-        <FlatList
-          data={data}
-          keyExtractor={(item) => `${item.student.id}-${item.turma.id}`}
-          contentContainerStyle={{ paddingVertical: 8 }}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/turma-checkins/[id]",
-                  params: { id: String(item.turma.id), name: item.turma.name },
-                })
-              }
+        {dojo?.logo_url ? (
+          <Image
+            source={{
+              uri: (() => {
+                const base = api.defaults.baseURL?.replace(/\/$/, "") ?? "";
+                if (dojo.logo_url!.startsWith("http")) {
+                  if (dojo.logo_url!.includes("localhost") || dojo.logo_url!.includes("127.0.0.1")) {
+                    const path = dojo.logo_url!.replace(/^https?:\/\/[^/]+/, "");
+                    return `${base}${path}`;
+                  }
+                  return dojo.logo_url!;
+                }
+                return `${base}${dojo.logo_url!.startsWith("/") ? "" : "/"}${dojo.logo_url}`;
+              })(),
+            }}
+            style={{
+              width: Math.min(screenWidth - tokens.space.lg * 4, 260),
+              height: Math.min(screenWidth * 0.35, 140),
+              resizeMode: "contain",
+            }}
+          />
+        ) : (
+          dojo?.name && (
+            <Text
               style={{
-                backgroundColor: "#0f172a",
-                borderRadius: 12,
-                padding: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: "#1e293b",
+                color: tokens.color.textOnPrimary,
+                fontSize: tokens.text.xl,
+                fontWeight: "700",
+                textAlign: "center",
               }}
             >
-              <Text style={{ color: "#facc15", fontWeight: "700", marginBottom: 4 }}>
-                {item.student.name}
-              </Text>
-              <Text style={{ color: "white", fontSize: 16, fontWeight: "600" }}>
-                {item.turma.name}
-              </Text>
-              <Text style={{ color: "#9ca3af", marginTop: 4 }}>
-                {item.turma.day_of_week} — {item.turma.start_time.slice(0, 5)} às{" "}
-                {item.turma.end_time.slice(0, 5)}
-              </Text>
-              {item.turma.capacity != null && (
-                <Text style={{ color: "#9ca3af", marginTop: 2 }}>
-                  Vagas: {item.turma.vagas_restantes ?? item.turma.capacity} de{" "}
-                  {item.turma.capacity}
-                </Text>
-              )}
-              {checkedInKeys.has(`${item.turma.id}-${item.student.id}`) ? (
-                <>
-                  <Pressable
-                    style={{
-                      marginTop: 12,
-                      backgroundColor: "#1e293b",
-                      borderRadius: 999,
-                      paddingVertical: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#ffffff",
-                        fontWeight: "700",
-                      }}
-                    >
-                      Check-in feito ✓
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      const id = checkinIdByKey.get(
-                        `${item.turma.id}-${item.student.id}`
-                      );
-                      if (id) cancelMutation.mutate(id);
-                    }}
-                    disabled={cancelMutation.isPending}
-                    style={{
-                      marginTop: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#ef4444",
-                        fontSize: 14,
-                        fontWeight: "600",
-                      }}
-                    >
-                      Cancelar check-in
-                    </Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable
-                  onPress={() =>
-                    mutation.mutate({
-                      turmaId: item.turma.id,
-                      studentId: item.student.id,
-                    })
-                  }
-                  disabled={mutation.isPending}
+              {dojo.name}
+            </Text>
+          )
+        )}
+      </View>
+
+      {/* Conteúdo */}
+      <View
+        style={{
+          flex: 1,
+          padding: tokens.space.md * 2,
+        }}
+      >
+        <Text
+          style={{
+            color: tokens.color.textPrimary,
+            fontSize: tokens.text.xl,
+            fontWeight: "700",
+            textAlign: "center",
+            marginBottom: tokens.space.lg,
+          }}
+        >
+          Treinos de Hoje
+        </Text>
+
+        {isLoading && (
+          <Text style={{ color: tokens.color.textMuted }}>Carregando...</Text>
+        )}
+        {error && (
+          <Text style={{ color: tokens.color.error }}>
+            Erro ao carregar turmas KIDS. Verifique sua conexão.
+          </Text>
+        )}
+        {(mutation.isError || cancelMutation.isError) && (
+          <Text style={{ color: tokens.color.error, marginTop: 8 }}>
+            {(mutation.error ?? cancelMutation.error) instanceof Error
+              ? (mutation.error as any)?.response?.data?.detail ??
+                (cancelMutation.error as any)?.response?.data?.detail ??
+                (mutation.error ?? cancelMutation.error).message
+              : "Erro ao processar check-in."}
+          </Text>
+        )}
+        {data && (
+          <FlatList
+            data={data}
+            keyExtractor={(item) => `${item.student.id}-${item.turma.id}`}
+            contentContainerStyle={{
+              paddingBottom: tokens.space.xl + 80,
+              flexGrow: 1,
+            }}
+            ListEmptyComponent={
+              !isLoading && !error ? (
+                <View
                   style={{
-                    marginTop: 12,
-                    backgroundColor: "#22c55e",
-                    borderRadius: 999,
-                    paddingVertical: 8,
+                    paddingVertical: tokens.space.xl * 2,
+                    paddingHorizontal: tokens.space.lg,
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      color: "#052e16",
-                      fontWeight: "700",
+                      color: tokens.color.textMuted,
+                      fontSize: tokens.text.md,
+                      textAlign: "center",
+                      lineHeight: 24,
                     }}
                   >
-                    Fazer check-in
+                    Nenhum treino KIDS agendado para hoje.
                   </Text>
-                </Pressable>
-              )}
-            </Pressable>
-          )}
-        />
-      )}
+                  <Text
+                    style={{
+                      color: tokens.color.textMuted,
+                      fontSize: tokens.text.sm,
+                      marginTop: tokens.space.sm,
+                      textAlign: "center",
+                    }}
+                  >
+                    Verifique as turmas dos filhos ou confira os treinos da semana.
+                  </Text>
+                </View>
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/turma-checkins/[id]",
+                    params: { id: String(item.turma.id), name: item.turma.name },
+                  })
+                }
+                style={{
+                  backgroundColor: tokens.color.bgBody,
+                  borderRadius: tokens.radius.lg,
+                  padding: tokens.space.lg,
+                  marginBottom: tokens.space.md,
+                  borderWidth: 2,
+                  borderColor: tokens.color.primary,
+                  shadowColor: tokens.color.textPrimary,
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 6,
+                  elevation: 3,
+                }}
+              >
+                <Text
+                  style={{
+                    color: tokens.color.kids,
+                    fontSize: tokens.text.sm,
+                    fontWeight: "700",
+                    marginBottom: tokens.space.xs,
+                  }}
+                >
+                  {item.student.name}
+                </Text>
+                <Text
+                  style={{
+                    color: tokens.color.textPrimary,
+                    fontSize: tokens.text.md,
+                    fontWeight: "700",
+                  }}
+                >
+                  {item.turma.name}
+                </Text>
+                <Text
+                  style={{
+                    color: tokens.color.textMuted,
+                    marginTop: tokens.space.xs,
+                    fontSize: tokens.text.sm,
+                  }}
+                >
+                  {item.turma.day_of_week} — {item.turma.start_time.slice(0, 5)} às{" "}
+                  {item.turma.end_time.slice(0, 5)}
+                </Text>
+                {item.turma.capacity != null && (
+                  <Text
+                    style={{
+                      color: tokens.color.textMuted,
+                      marginTop: 2,
+                      fontSize: tokens.text.sm,
+                    }}
+                  >
+                    Vagas: {item.turma.vagas_restantes ?? item.turma.capacity} de{" "}
+                    {item.turma.capacity}
+                  </Text>
+                )}
+                {checkedInKeys.has(`${item.turma.id}-${item.student.id}`) ? (
+                  <>
+                    <Pressable
+                      disabled={cancelMutation.isPending}
+                      onPress={() => {}}
+                      style={{
+                        marginTop: tokens.space.md,
+                        backgroundColor: tokens.color.primary,
+                        borderRadius: tokens.radius.md,
+                        paddingVertical: tokens.space.sm,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: tokens.color.bgCard,
+                          fontWeight: "700",
+                          fontSize: tokens.text.sm,
+                        }}
+                      >
+                        Check-in feito ✓
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        const id = checkinIdByKey.get(
+                          `${item.turma.id}-${item.student.id}`
+                        );
+                        if (id) cancelMutation.mutate(id);
+                      }}
+                      disabled={cancelMutation.isPending}
+                      style={{
+                        marginTop: tokens.space.sm,
+                        paddingVertical: tokens.space.sm,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: tokens.color.primary,
+                          fontSize: tokens.text.sm,
+                          fontWeight: "600",
+                        }}
+                      >
+                        Cancelar check-in
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable
+                    onPress={() =>
+                      mutation.mutate({
+                        turmaId: item.turma.id,
+                        studentId: item.student.id,
+                      })
+                    }
+                    disabled={mutation.isPending}
+                    style={{
+                      marginTop: tokens.space.md,
+                      backgroundColor: tokens.color.primary,
+                      borderRadius: tokens.radius.md,
+                      paddingVertical: tokens.space.sm,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: tokens.color.bgCard,
+                        fontWeight: "700",
+                        fontSize: tokens.text.sm,
+                      }}
+                    >
+                      Fazer check-in
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            )}
+          />
+        )}
+      </View>
     </View>
   );
 }
-

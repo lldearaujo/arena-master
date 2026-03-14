@@ -6,6 +6,7 @@ class DojoBase(BaseModel):
     slug: str
     localidade: str | None = None
     contato: str | None = None
+    logo_url: str | None = None
     active: bool = True
 
 
@@ -18,6 +19,7 @@ class DojoUpdate(BaseModel):
     slug: str | None = None
     localidade: str | None = None
     contato: str | None = None
+    logo_url: str | None = None
     active: bool | None = None
 
 

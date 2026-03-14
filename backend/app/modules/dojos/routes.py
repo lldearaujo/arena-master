@@ -1,20 +1,28 @@
+import uuid
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.security import get_current_user, require_superadmin
+from app.core.security import get_current_admin, get_current_user, require_superadmin
 from app.models.user import User
 from app.modules.dojos import schemas, service
 
 
 router = APIRouter()
 
+# Pasta para uploads (relativa ao diretório do backend)
+UPLOAD_DIR = Path(__file__).resolve().parents[3] / "static" / "uploads" / "dojos"
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SuperAdminDep = Annotated[User, Depends(require_superadmin)]
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+AdminDep = Annotated[User, Depends(get_current_admin)]
 
 
 @router.get("/me", response_model=schemas.DojoRead)
@@ -29,6 +37,55 @@ async def get_my_dojo(
         )
 
     dojo = await service.get_dojo(session, current_user.dojo_id)
+    if dojo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dojo não encontrado")
+    return schemas.DojoRead.model_validate(dojo)
+
+
+@router.patch("/me", response_model=schemas.DojoRead)
+async def update_my_dojo(
+    admin: AdminDep,
+    session: SessionDep,
+    payload: schemas.DojoUpdate,
+) -> schemas.DojoRead:
+    """Permite ao admin atualizar o próprio dojo (ex: logo_url)."""
+    dojo = await service.update_dojo(session, admin.dojo_id, payload)
+    if dojo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dojo não encontrado")
+    return schemas.DojoRead.model_validate(dojo)
+
+
+@router.post("/me/logo", response_model=schemas.DojoRead)
+async def upload_my_dojo_logo(
+    admin: AdminDep,
+    session: SessionDep,
+    file: Annotated[UploadFile, File()],
+) -> schemas.DojoRead:
+    """Upload da logo do dojo do admin."""
+    if file.content_type and file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato inválido. Use PNG, JPG ou WebP.",
+        )
+    ext = Path(file.filename or "logo.png").suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        ext = ".png"
+    dojo_dir = UPLOAD_DIR / str(admin.dojo_id)
+    dojo_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"logo_{uuid.uuid4().hex[:8]}{ext}"
+    filepath = dojo_dir / filename
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:  # 5MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo muito grande. Máximo 5MB.",
+        )
+    filepath.write_bytes(content)
+    # Caminho relativo: o cliente monta a URL com seu baseURL (evita localhost no app mobile)
+    logo_url = f"/static/uploads/dojos/{admin.dojo_id}/{filename}"
+    dojo = await service.update_dojo(
+        session, admin.dojo_id, schemas.DojoUpdate(logo_url=logo_url)
+    )
     if dojo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dojo não encontrado")
     return schemas.DojoRead.model_validate(dojo)

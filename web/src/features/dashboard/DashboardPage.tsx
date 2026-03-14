@@ -468,7 +468,7 @@ function AlunoDashboard() {
       {(kidsTurmas && kidsTurmas.length > 0) && (
         <div style={cardStyle}>
           <h2 style={{ fontSize: tokens.text.lg, fontWeight: 600, marginBottom: tokens.space.md }}>
-            Turmas dos meus filhos
+            Turma kids
           </h2>
           <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
             {kidsTurmas.map((item, idx) => (
