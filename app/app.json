@@ -11,7 +11,11 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#020617"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.lldearaujo.arenamaster"
     },
     "web": {
       "bundler": "metro",
@@ -26,7 +30,12 @@
         }
       ]
     ],
-    "experiments": {}
+    "experiments": {},
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a2a03dbf-5c6a-431f-a88f-829207895039"
+      }
+    }
   }
 }
-
