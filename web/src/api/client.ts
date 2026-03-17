@@ -1,13 +1,14 @@
 import axios, { AxiosError } from "axios";
 import { useAuthStore } from "../store/auth";
 
-const isProduction =
-  typeof window !== "undefined" &&
-  window.location.hostname === "arenamaster.ideiasobria.online";
+const rawBaseURL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const apiBaseURL = isProduction
-  ? "https://arenamasterbk.ideiasobria.online"
-  : import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Em HTTPS (ex.: produção), forçar API em HTTPS para evitar Mixed Content
+const apiBaseURL =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? rawBaseURL.replace(/^http:\/\//i, "https://")
+    : rawBaseURL;
 
 export const api = axios.create({
   baseURL: apiBaseURL,
