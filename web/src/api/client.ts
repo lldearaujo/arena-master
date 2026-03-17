@@ -1,8 +1,16 @@
 import axios, { AxiosError } from "axios";
 import { useAuthStore } from "../store/auth";
 
+const isProduction =
+  typeof window !== "undefined" &&
+  window.location.hostname === "arenamaster.ideiasobria.online";
+
+const apiBaseURL = isProduction
+  ? "https://arenamasterbk.ideiasobria.online"
+  : import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  baseURL: apiBaseURL,
 });
 
 type TokenPairResponse = {
