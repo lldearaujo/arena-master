@@ -370,12 +370,30 @@ async def list_checkins(
     session: AsyncSession,
     dojo_id: int,
     filters: CheckInFilter,
-) -> list[tuple[CheckIn, str | None]]:
+) -> list[tuple[CheckIn, str | None, int | None]]:
     from app.models.student import Student
 
+    # Subconsulta com o "score" de cada aluno:
+    # total de presenças confirmadas (presence_confirmed_at não nulo)
+    score_subq = (
+        select(
+            CheckIn.student_id.label("s_id"),
+            func.count().label("score"),
+        )
+        .where(
+            and_(
+                CheckIn.dojo_id == dojo_id,
+                CheckIn.presence_confirmed_at.is_not(None),
+            )
+        )
+        .group_by(CheckIn.student_id)
+        .subquery()
+    )
+
     query = (
-        select(CheckIn, Student.name)
+        select(CheckIn, Student.name, score_subq.c.score)
         .join(Student, Student.id == CheckIn.student_id)
+        .outerjoin(score_subq, score_subq.c.s_id == CheckIn.student_id)
         .where(CheckIn.dojo_id == dojo_id)
         .order_by(CheckIn.occurred_at.desc())
     )

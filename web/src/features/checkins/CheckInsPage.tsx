@@ -9,6 +9,7 @@ type CheckIn = {
   turma_id: number;
   student_id: number;
   student_name: string | null;
+  score: number | null;
   occurred_at: string;
   checked_in_by_user_id: number | null;
   presence_confirmed_at: string | null;
@@ -129,6 +130,7 @@ export function CheckInsPage() {
           <thead>
             <tr>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Aluno</th>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Score</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Turma (ID)</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Data/Hora</th>
               <th style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", padding: 8 }}>Confirmação</th>
@@ -139,6 +141,9 @@ export function CheckInsPage() {
               <tr key={c.id}>
                 <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>
                   {c.student_name ?? `ID ${c.student_id}`}
+                </td>
+                <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>
+                  {c.score ?? "—"}
                 </td>
                 <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>{c.turma_id}</td>
                 <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>

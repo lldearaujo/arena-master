@@ -854,7 +854,7 @@ export default function FinanceiroScreen() {
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    {dueDate && (
+                    {dueDate && p.status !== "confirmed" && (
                       <Text
                         style={{
                           fontSize: tokens.text.xs,

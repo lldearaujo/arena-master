@@ -17,3 +17,8 @@ class UserMeRead(BaseModel):
 class AvatarUpdate(BaseModel):
     avatar_url: str | None = None
     name: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

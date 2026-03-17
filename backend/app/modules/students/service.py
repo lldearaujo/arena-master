@@ -89,7 +89,7 @@ async def create_student(
         role="aluno",
         dojo_id=dojo_id,
         name=student.name,
-        is_active=True,
+        is_active=bool(data.is_active),
     )
     session.add(user)
     await session.flush()
@@ -131,8 +131,16 @@ async def update_student(
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    is_active = update_data.pop("is_active", None)
     for field, value in update_data.items():
         setattr(student, field, value)
+
+    # Atualiza o status do usuário vinculado (login do aluno), se existir
+    if is_active is not None and student.user_id is not None:
+        result = await session.execute(select(User).where(User.id == student.user_id))
+        user = result.scalar_one_or_none()
+        if user is not None:
+            user.is_active = bool(is_active)
 
     await session.commit()
     await session.refresh(student)

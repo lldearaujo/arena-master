@@ -16,6 +16,7 @@ class StudentCreate(StudentBase):
     user_id: int | None = None
     faixa_id: int | None = None
     grau: int = 0
+    is_active: bool = True
 
 
 class StudentUpdate(BaseModel):
@@ -27,6 +28,7 @@ class StudentUpdate(BaseModel):
     notes: str | None = None
     faixa_id: int | None = None
     grau: int | None = None
+    is_active: bool | None = None
 
 
 class StudentRead(StudentBase):
@@ -49,6 +51,7 @@ class StudentCreatedResponse(BaseModel):
 
 class StudentWithLoginRead(StudentRead):
     login_email: str | None = None
+    is_active: bool = True
 
 
 class GuardianLink(BaseModel):

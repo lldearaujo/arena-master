@@ -14,6 +14,7 @@ import { CheckInsPage } from "./features/checkins/CheckInsPage";
 import { FaixasPage } from "./features/faixas/FaixasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { FinancePage } from "./features/finance/FinancePage";
+import { SkillsPage } from "./features/skills/SkillsPage";
 import { AppShell } from "./ui/AppShell";
 
 type PrivateRouteProps = {
@@ -156,6 +157,14 @@ export function App() {
         element={
           <PrivateRoute allowedRoles={["admin"]}>
             <FinancePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/habilidades"
+        element={
+          <PrivateRoute allowedRoles={["admin"]}>
+            <SkillsPage />
           </PrivateRoute>
         }
       />

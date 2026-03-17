@@ -162,9 +162,14 @@ async def list_checkins(
     )
     rows = await service.list_checkins(session, admin.dojo_id, filters)
     response: list[schemas.CheckInRead] = []
-    for checkin, student_name in rows:
+    for checkin, student_name, score in rows:
         base = schemas.CheckInRead.model_validate(checkin)
-        enriched = base.model_copy(update={"student_name": student_name})
+        enriched = base.model_copy(
+            update={
+                "student_name": student_name,
+                "score": score,
+            }
+        )
         response.append(enriched)
     return response
 

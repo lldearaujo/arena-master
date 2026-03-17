@@ -68,7 +68,7 @@ export function AppShell({ children }: AppShellProps) {
   const logoDoDojo = dojo?.logo_url ? resolveDojoLogoUrl(dojo.logo_url) : null;
 
   const sidebarWidth = 240;
-  const contentGap = 40;
+  const contentGap = 24;
 
   return (
     <div
@@ -240,6 +240,7 @@ export function AppShell({ children }: AppShellProps) {
                 { to: "/faixas", label: "Faixas" },
                 { to: "/mural", label: "Mural" },
                 { to: "/students", label: "Alunos" },
+                { to: "/habilidades", label: "Habilidades" },
                 { to: "/turmas", label: "Turmas" },
                 { to: "/check-ins", label: "Check-ins" },
               { to: "/financeiro", label: "Financeiro" },

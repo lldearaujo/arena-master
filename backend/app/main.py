@@ -16,6 +16,7 @@ from app.modules.faixas.routes import router as faixas_router
 from app.modules.users.routes import router as users_router
 from app.modules.mural.routes import router as mural_router
 from app.modules.finance.routes import router as finance_router
+from app.modules.skills.routes import router as skills_router
 
 
 def create_app() -> FastAPI:
@@ -26,17 +27,20 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    dev_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8081",  # Expo web
+        "http://127.0.0.1:8081",
+    ]
+    extra_origins = settings.cors_origins or []
+    allow_origins = list(dict.fromkeys([*dev_origins, *extra_origins]))
+
     app.add_middleware(
         CORSMiddleware,
-        # Para desenvolvimento, liberamos as origens locais conhecidas.
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:8081",   # Expo web
-            "http://127.0.0.1:8081",
-        ],
+        allow_origins=allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -52,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix="/api/users", tags=["users"])
     app.include_router(mural_router, prefix="/api/mural", tags=["mural"])
     app.include_router(finance_router, prefix="/api/finance", tags=["finance"])
+    app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
 
     # Diretório de arquivos estáticos (inclui comprovantes em static/receipts e logos de dojos)
     # Usamos o diretório "static" dentro de backend/, compartilhado entre os módulos Python.

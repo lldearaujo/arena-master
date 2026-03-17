@@ -49,21 +49,25 @@ async def list_students(
     # Busca os logins (emails de acesso) dos usuários vinculados aos alunos
     user_ids = [s.user_id for s in students if s.user_id is not None]
     login_by_user_id: dict[int, str] = {}
+    active_by_user_id: dict[int, bool] = {}
     if user_ids:
         result = await session.execute(
-            select(User.id, User.email).where(User.id.in_(user_ids))
+            select(User.id, User.email, User.is_active).where(User.id.in_(user_ids))
         )
-        for user_id, email in result.all():
+        for user_id, email, is_active in result.all():
             login_by_user_id[user_id] = email
+            active_by_user_id[user_id] = bool(is_active)
 
     items: list[schemas.StudentWithLoginRead] = []
     for s in students:
         login_email = login_by_user_id.get(s.user_id) if s.user_id is not None else None
+        is_active = active_by_user_id.get(s.user_id, True) if s.user_id is not None else True
         base = await _student_to_read(session, s)
         items.append(
             schemas.StudentWithLoginRead(
                 **base.model_dump(),
                 login_email=login_email,
+                is_active=is_active,
             )
         )
     return items

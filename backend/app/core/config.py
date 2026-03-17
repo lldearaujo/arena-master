@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from pydantic import Field
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -23,7 +24,24 @@ class Settings(BaseSettings):
 
     # Lista de origens permitidas para CORS. Para simplificar o carregamento via .env,
     # usamos uma lista simples de strings e um valor padrão vazio.
-    cors_origins: list[str] = Field(default_factory=list)
+    cors_origins: list[str] = Field(default_factory=list, alias="CORS_ORIGINS")
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        # Aceita:
+        # - lista nativa (ex.: JSON) -> ["https://a.com", "https://b.com"]
+        # - string separada por vírgula -> "https://a.com,https://b.com"
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str):
+            raw = v.strip()
+            if not raw:
+                return []
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return v
 
     class Config:
         env_file = ".env"

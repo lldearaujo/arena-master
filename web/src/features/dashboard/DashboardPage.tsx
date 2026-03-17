@@ -39,6 +39,10 @@ type KidsTurma = {
   turma: Turma;
 };
 
+type PaymentPending = {
+  id: number;
+};
+
 const cardStyle = {
   padding: tokens.space.xl,
   backgroundColor: "white",
@@ -218,6 +222,13 @@ function AdminDashboard() {
       return res.data;
     },
   });
+  const { data: paymentsPending } = useQuery({
+    queryKey: ["finance", "payments-pending-dashboard"],
+    queryFn: async () => {
+      const res = await api.get<PaymentPending[]>("/api/finance/payments");
+      return res.data;
+    },
+  });
   const { data: checkins } = useQuery({
     queryKey: ["check-ins", "recent"],
     queryFn: async () => {
@@ -304,6 +315,25 @@ function AdminDashboard() {
           </div>
           <Link to="/check-ins" style={{ fontSize: tokens.text.sm, color: tokens.color.primary, marginTop: 4 }}>
             Registrar
+          </Link>
+        </div>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: tokens.text.xs,
+              color: tokens.color.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              marginBottom: tokens.space.xs,
+            }}
+          >
+            Pagamentos pendentes
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: tokens.color.warning ?? tokens.color.primary }}>
+            {paymentsPending ? paymentsPending.length : "—"}
+          </div>
+          <Link to="/finance" style={{ fontSize: tokens.text.sm, color: tokens.color.primary, marginTop: 4 }}>
+            Ver detalhes
           </Link>
         </div>
       </div>

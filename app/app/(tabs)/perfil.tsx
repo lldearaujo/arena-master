@@ -6,6 +6,7 @@ import {
   Calendar,
   BookOpen,
   ChevronRight,
+  KeyRound,
   MessageSquare,
   Target,
   Trophy,
@@ -19,11 +20,14 @@ import {
   Image,
   Platform,
   Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
   useWindowDimensions,
   Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Line, Polygon } from "react-native-svg";
 
 import { api, clearPersistedSession, persistSession } from "../../src/api/client";
 import { useAuthStore } from "../../src/store/auth";
@@ -62,6 +66,11 @@ type CheckInRead = {
   occurred_at: string;
 };
 
+type MySkills = {
+  skills: string[];
+  ratings: number[];
+};
+
 function resolveAvatarUri(url: string | null | undefined): { uri: string } | null {
   if (!url) return null;
   if (url.startsWith("data:")) return { uri: url };
@@ -78,6 +87,11 @@ export default function PerfilScreen() {
   const clearSession = useAuthStore((s) => s.clearSession);
   const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
+
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   const { data: me } = useQuery({
     queryKey: ["user-me"],
@@ -246,6 +260,49 @@ export default function PerfilScreen() {
     router.replace("/(auth)/login");
   };
 
+  const changePasswordMutation = useMutation({
+    mutationFn: async (payload: {
+      current_password: string;
+      new_password: string;
+    }) => {
+      await api.post("/api/users/me/password", payload);
+    },
+    onSuccess: async () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setIsChangePasswordOpen(false);
+      if (Platform.OS === "web") {
+        // eslint-disable-next-line no-alert
+        alert("Senha atualizada com sucesso.");
+      } else {
+        Alert.alert("Senha atualizada", "Sua senha foi alterada com sucesso.");
+      }
+    },
+    onError: (err) => {
+      const detail =
+        (err as any)?.response?.data?.detail ??
+        (err instanceof Error ? err.message : null) ??
+        "Não foi possível alterar a senha. Tente novamente.";
+      if (Platform.OS === "web") {
+        // eslint-disable-next-line no-alert
+        alert(detail);
+      } else {
+        Alert.alert("Erro ao alterar senha", String(detail));
+      }
+    },
+  });
+
+  const { data: mySkills } = useQuery({
+    queryKey: ["skills", "me"],
+    queryFn: async () => {
+      const res = await api.get<MySkills>("/api/skills/me");
+      return res.data;
+    },
+    enabled: user?.role === "aluno",
+    staleTime: 60_000,
+  });
+
   const handleContatoDojo = () => {
     const contato = dojo?.contato;
     if (!contato) return;
@@ -268,6 +325,13 @@ export default function PerfilScreen() {
   if (!user) return null;
 
   const isAluno = user.role === "aluno";
+  const isSmallScreen = width < 420;
+  const gridGap = tokens.space.md;
+  const contentWidth = width - tokens.space.lg * 2;
+  const twoColItemWidth = (contentWidth - gridGap) / 2;
+
+  const skillsLabels = mySkills?.skills?.length === 5 ? mySkills.skills : ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"];
+  const skillsRatings = mySkills?.ratings?.length === 5 ? mySkills.ratings : [0, 0, 0, 0, 0];
 
   return (
     <View style={{ flex: 1, backgroundColor: tokens.color.bgBody }}>
@@ -298,7 +362,7 @@ export default function PerfilScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: tokens.space.lg,
-          paddingBottom: tokens.space.xl + 80,
+          paddingBottom: tokens.space.xl + 80 + insets.bottom,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -560,14 +624,14 @@ export default function PerfilScreen() {
           style={{
             flexDirection: "row",
             flexWrap: "wrap",
-            gap: tokens.space.md,
             marginBottom: tokens.space.xl,
           }}
         >
           <View
             style={{
-              flex: 1,
-              minWidth: (width - tokens.space.lg * 4) / 2 - tokens.space.md,
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: isSmallScreen ? 0 : gridGap,
+              marginBottom: gridGap,
               backgroundColor: tokens.color.borderSubtle,
               borderRadius: tokens.radius.md,
               padding: tokens.space.lg,
@@ -599,8 +663,9 @@ export default function PerfilScreen() {
 
           <View
             style={{
-              flex: 1,
-              minWidth: (width - tokens.space.lg * 4) / 2 - tokens.space.md,
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: 0,
+              marginBottom: gridGap,
               backgroundColor: tokens.color.borderSubtle,
               borderRadius: tokens.radius.md,
               padding: tokens.space.lg,
@@ -632,8 +697,9 @@ export default function PerfilScreen() {
 
           <View
             style={{
-              flex: 1,
-              minWidth: (width - tokens.space.lg * 4) / 2 - tokens.space.md,
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: isSmallScreen ? 0 : gridGap,
+              marginBottom: 0,
               backgroundColor: tokens.color.borderSubtle,
               borderRadius: tokens.radius.md,
               padding: tokens.space.lg,
@@ -666,8 +732,9 @@ export default function PerfilScreen() {
 
           <View
             style={{
-              flex: 1,
-              minWidth: (width - tokens.space.lg * 4) / 2 - tokens.space.md,
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: 0,
+              marginBottom: 0,
               backgroundColor: tokens.color.borderSubtle,
               borderRadius: tokens.radius.md,
               padding: tokens.space.lg,
@@ -700,76 +767,172 @@ export default function PerfilScreen() {
           </View>
         </View>
 
+        {isAluno && (
+          <View style={{ marginBottom: tokens.space.xl }}>
+            <Text
+              style={{
+                color: tokens.color.textPrimary,
+                fontSize: tokens.text.lg,
+                fontWeight: "800",
+                marginBottom: tokens.space.md,
+              }}
+            >
+              Habilidades
+            </Text>
+            <View
+              style={{
+                backgroundColor: tokens.color.bgCard,
+                borderRadius: tokens.radius.lg,
+                padding: tokens.space.lg,
+              }}
+            >
+              <View style={{ alignItems: "center" }}>
+                <RadarChart
+                  size={Math.min(contentWidth, 320)}
+                  labels={skillsLabels}
+                  values={skillsRatings}
+                  maxValue={10}
+                />
+              </View>
+              <Text
+                style={{
+                  marginTop: tokens.space.md,
+                  color: tokens.color.textMuted,
+                  fontSize: tokens.text.xs,
+                  textAlign: "center",
+                }}
+              >
+                Avaliação do seu professor (0 a 10) para as 5 habilidades do dojo.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Navegação inferior */}
         <View
           style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: tokens.space.md,
+            flexDirection: isSmallScreen ? "column" : "row",
+            flexWrap: isSmallScreen ? "nowrap" : "wrap",
             marginBottom: tokens.space.xl,
           }}
         >
           <Pressable
             style={{
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: isSmallScreen ? 0 : gridGap,
+              marginBottom: gridGap,
               flexDirection: "row",
               alignItems: "center",
+              justifyContent: "space-between",
               paddingVertical: tokens.space.sm,
-              paddingRight: tokens.space.sm,
+              paddingHorizontal: tokens.space.sm,
+              borderRadius: tokens.radius.md,
             }}
           >
-            <BookOpen size={18} color={tokens.color.primary} strokeWidth={2} />
-            <Text
-              style={{
-                color: tokens.color.primary,
-                fontWeight: "600",
-                marginLeft: tokens.space.sm,
-              }}
-            >
-              Plano de Aulas
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+              <BookOpen size={18} color={tokens.color.primary} strokeWidth={2} />
+              <Text
+                style={{
+                  color: tokens.color.primary,
+                  fontWeight: "600",
+                  marginLeft: tokens.space.sm,
+                  flexShrink: 1,
+                }}
+              >
+                Plano de Aulas
+              </Text>
+            </View>
             <ChevronRight size={16} color={tokens.color.primary} />
           </Pressable>
           <Pressable
             style={{
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: 0,
+              marginBottom: gridGap,
               flexDirection: "row",
               alignItems: "center",
+              justifyContent: "space-between",
               paddingVertical: tokens.space.sm,
-              paddingRight: tokens.space.sm,
+              paddingHorizontal: tokens.space.sm,
+              borderRadius: tokens.radius.md,
             }}
           >
-            <Calendar size={18} color={tokens.color.primary} strokeWidth={2} />
-            <Text
-              style={{
-                color: tokens.color.primary,
-                fontWeight: "600",
-                marginLeft: tokens.space.sm,
-              }}
-            >
-              Metas do Mestre
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+              <Calendar size={18} color={tokens.color.primary} strokeWidth={2} />
+              <Text
+                style={{
+                  color: tokens.color.primary,
+                  fontWeight: "600",
+                  marginLeft: tokens.space.sm,
+                  flexShrink: 1,
+                }}
+              >
+                Metas do Mestre
+              </Text>
+            </View>
             <ChevronRight size={16} color={tokens.color.primary} />
           </Pressable>
           <Pressable
             onPress={handleContatoDojo}
             style={{
+              width: isSmallScreen ? "100%" : twoColItemWidth,
+              marginRight: isSmallScreen ? 0 : gridGap,
+              marginBottom: 0,
               flexDirection: "row",
               alignItems: "center",
+              justifyContent: "space-between",
               paddingVertical: tokens.space.sm,
-              paddingRight: tokens.space.sm,
+              paddingHorizontal: tokens.space.sm,
+              borderRadius: tokens.radius.md,
             }}
           >
-            <MessageSquare size={18} color={tokens.color.primary} strokeWidth={2} />
-            <Text
-              style={{
-                color: tokens.color.primary,
-                fontWeight: "600",
-                marginLeft: tokens.space.sm,
-              }}
-            >
-              Contato do Dojo
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+              <MessageSquare size={18} color={tokens.color.primary} strokeWidth={2} />
+              <Text
+                style={{
+                  color: tokens.color.primary,
+                  fontWeight: "600",
+                  marginLeft: tokens.space.sm,
+                  flexShrink: 1,
+                }}
+              >
+                Contato do Dojo
+              </Text>
+            </View>
             <ChevronRight size={16} color={tokens.color.primary} />
           </Pressable>
+
+          {isAluno && (
+            <Pressable
+              onPress={() => setIsChangePasswordOpen(true)}
+              style={{
+                width: isSmallScreen ? "100%" : twoColItemWidth,
+                marginRight: 0,
+                marginBottom: 0,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: tokens.space.sm,
+                paddingHorizontal: tokens.space.sm,
+                borderRadius: tokens.radius.md,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+                <KeyRound size={18} color={tokens.color.primary} strokeWidth={2} />
+                <Text
+                  style={{
+                    color: tokens.color.primary,
+                    fontWeight: "600",
+                    marginLeft: tokens.space.sm,
+                    flexShrink: 1,
+                  }}
+                >
+                  Trocar senha
+                </Text>
+              </View>
+              <ChevronRight size={16} color={tokens.color.primary} />
+            </Pressable>
+          )}
         </View>
 
         {/* Sair */}
@@ -793,6 +956,351 @@ export default function PerfilScreen() {
           </Text>
         </Pressable>
       </ScrollView>
+
+      <Modal
+        visible={isChangePasswordOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!changePasswordMutation.isPending) setIsChangePasswordOpen(false);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            padding: tokens.space.lg,
+            justifyContent: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: tokens.color.bgCard,
+              borderRadius: tokens.radius.lg,
+              padding: tokens.space.lg,
+              borderWidth: 1,
+              borderColor: tokens.color.borderStrong,
+            }}
+          >
+            <Text
+              style={{
+                color: tokens.color.textOnPrimary,
+                fontSize: tokens.text.md,
+                fontWeight: "800",
+                marginBottom: tokens.space.md,
+              }}
+            >
+              Trocar senha
+            </Text>
+
+            <Text style={{ color: tokens.color.textMuted, fontSize: tokens.text.xs }}>
+              Por segurança, informe sua senha atual e defina uma nova senha.
+            </Text>
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Senha atual
+            </Text>
+            <TextInput
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+              editable={!changePasswordMutation.isPending}
+              placeholder="Digite sua senha atual"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textOnPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Nova senha
+            </Text>
+            <TextInput
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              editable={!changePasswordMutation.isPending}
+              placeholder="Mínimo 6 caracteres"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textOnPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Confirmar nova senha
+            </Text>
+            <TextInput
+              value={confirmNewPassword}
+              onChangeText={setConfirmNewPassword}
+              secureTextEntry
+              editable={!changePasswordMutation.isPending}
+              placeholder="Digite novamente"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textOnPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.lg }} />
+
+            <View style={{ flexDirection: "row", gap: tokens.space.sm }}>
+              <Pressable
+                onPress={() => {
+                  if (!changePasswordMutation.isPending) {
+                    setIsChangePasswordOpen(false);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: tokens.color.borderStrong,
+                  borderRadius: tokens.radius.full,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  backgroundColor: "transparent",
+                }}
+              >
+                <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "700" }}>
+                  Cancelar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  const cur = currentPassword;
+                  const next = newPassword;
+                  const confirm = confirmNewPassword;
+
+                  if (!cur || !next || !confirm) {
+                    if (Platform.OS === "web") alert("Preencha todos os campos.");
+                    else Alert.alert("Atenção", "Preencha todos os campos.");
+                    return;
+                  }
+                  if (next.length < 6) {
+                    if (Platform.OS === "web")
+                      alert("A nova senha deve ter pelo menos 6 caracteres.");
+                    else
+                      Alert.alert(
+                        "Senha fraca",
+                        "A nova senha deve ter pelo menos 6 caracteres.",
+                      );
+                    return;
+                  }
+                  if (next !== confirm) {
+                    if (Platform.OS === "web") alert("As senhas não conferem.");
+                    else Alert.alert("Atenção", "As senhas não conferem.");
+                    return;
+                  }
+
+                  changePasswordMutation.mutate({
+                    current_password: cur,
+                    new_password: next,
+                  });
+                }}
+                disabled={changePasswordMutation.isPending}
+                style={{
+                  flex: 1,
+                  backgroundColor: tokens.color.primary,
+                  borderRadius: tokens.radius.full,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  opacity: changePasswordMutation.isPending ? 0.85 : 1,
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                {changePasswordMutation.isPending && (
+                  <ActivityIndicator size="small" color={tokens.color.textOnPrimary} />
+                )}
+                <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "800" }}>
+                  Salvar
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function RadarChart({
+  size,
+  labels,
+  values,
+  maxValue,
+}: {
+  size: number;
+  labels: string[];
+  values: number[];
+  maxValue: number;
+}) {
+  const center = size / 2;
+  // Mais respiro para não cortar labels e melhorar leitura
+  const padding = 34;
+  const radius = center - padding;
+  const levels = 4; // 0.25, 0.5, 0.75, 1.0
+  const angleStep = (Math.PI * 2) / 5;
+  const startAngle = -Math.PI / 2;
+
+  const clamp = (n: number) => Math.max(0, Math.min(maxValue, n));
+
+  // Paleta alinhada ao design do app (card escuro + dourado)
+  const gridStroke = "rgba(255,255,255,0.12)";
+  const axisStroke = "rgba(255,255,255,0.18)";
+  const labelColor = "rgba(255,255,255,0.72)";
+  const valueColor = tokens.color.textOnPrimary;
+  const accentStroke = "rgba(184,158,93,0.95)"; // tokens.color.primary
+  const accentFill = "rgba(184,158,93,0.28)";
+
+  const axisPoints = Array.from({ length: 5 }, (_, i) => {
+    const a = startAngle + i * angleStep;
+    return {
+      x: center + radius * Math.cos(a),
+      y: center + radius * Math.sin(a),
+      a,
+    };
+  });
+
+  const polygonPoints = values
+    .map((v, i) => {
+      const a = startAngle + i * angleStep;
+      const r = (radius * clamp(v)) / maxValue;
+      const x = center + r * Math.cos(a);
+      const y = center + r * Math.sin(a);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const gridPolygons = Array.from({ length: levels }, (_, lvl) => {
+    const t = (lvl + 1) / levels;
+    const pts = axisPoints
+      .map((p) => `${center + (p.x - center) * t},${center + (p.y - center) * t}`)
+      .join(" ");
+    return pts;
+  });
+
+  const labelOffset = 18;
+  const labelFontSize = 12;
+  const labelMaxWidth = 110;
+
+  return (
+    <View style={{ width: size, height: size }}>
+      <Svg width={size} height={size}>
+        {/* grid */}
+        {gridPolygons.map((pts, idx) => (
+          <Polygon
+            key={idx}
+            points={pts}
+            fill="transparent"
+            stroke={gridStroke}
+            strokeWidth={1}
+          />
+        ))}
+
+        {/* axes */}
+        {axisPoints.map((p, idx) => (
+          <Line
+            key={idx}
+            x1={center}
+            y1={center}
+            x2={p.x}
+            y2={p.y}
+            stroke={axisStroke}
+            strokeWidth={1}
+          />
+        ))}
+
+        {/* data polygon */}
+        <Polygon
+          points={polygonPoints}
+          fill={accentFill}
+          stroke={accentStroke}
+          strokeWidth={2.5}
+        />
+
+        {/* points */}
+        {values.map((v, i) => {
+          const a = startAngle + i * angleStep;
+          const r = (radius * clamp(v)) / maxValue;
+          const x = center + r * Math.cos(a);
+          const y = center + r * Math.sin(a);
+          return (
+            <Circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={4}
+              fill={accentStroke}
+              stroke="rgba(255,255,255,0.95)"
+              strokeWidth={2}
+            />
+          );
+        })}
+      </Svg>
+
+      {/* labels (fora do SVG para facilitar quebra) */}
+      {axisPoints.map((p, idx) => {
+        const x = center + (p.x - center) * 1.08;
+        const y = center + (p.y - center) * 1.08;
+
+        // Ajuste simples por quadrante
+        const dx = Math.cos(p.a) * labelOffset;
+        const dy = Math.sin(p.a) * labelOffset;
+
+        return (
+          <View
+            key={idx}
+            style={{
+              position: "absolute",
+              left: x + dx - labelMaxWidth / 2,
+              top: y + dy - 8,
+              width: labelMaxWidth,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: labelFontSize,
+                color: labelColor,
+                textAlign: "center",
+                fontWeight: "600",
+              }}
+              numberOfLines={2}
+            >
+              {labels[idx] ?? `Skill ${idx + 1}`}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }

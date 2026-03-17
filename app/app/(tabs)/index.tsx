@@ -87,6 +87,7 @@ export default function MinhasTurmasScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-turmas"] });
       queryClient.invalidateQueries({ queryKey: ["my-checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["turma-checkins"] });
     },
   });
 
@@ -97,6 +98,7 @@ export default function MinhasTurmasScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-turmas"] });
       queryClient.invalidateQueries({ queryKey: ["my-checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["turma-checkins"] });
     },
   });
 

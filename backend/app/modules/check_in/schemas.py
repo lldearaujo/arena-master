@@ -15,6 +15,8 @@ class CheckInRead(BaseModel):
     turma_id: int
     student_id: int
     student_name: str | None = None
+    # Total de presenças confirmadas do aluno (score acumulado)
+    score: int | None = None
     occurred_at: datetime
     checked_in_by_user_id: int | None = None
     presence_confirmed_at: datetime | None = None
