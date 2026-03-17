@@ -10,8 +10,8 @@ COPY web/package.json web/package-lock.json ./web/
 WORKDIR /app/web
 RUN npm ci
 
-# Variável de ambiente de build do Vite
-ARG VITE_API_URL
+# Variável de ambiente de build do Vite (padrão produção)
+ARG VITE_API_URL=https://arenamasterbk.ideiasobria.online
 ENV VITE_API_URL=${VITE_API_URL}
 
 # Código-fonte (web + shared)
