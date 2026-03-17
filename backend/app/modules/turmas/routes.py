@@ -43,11 +43,12 @@ async def my_kids_turmas(
     session: SessionDep,
 ) -> list[dict]:
     pairs = await service.turmas_for_guardian_kids(session, user)
-    if not pairs or user.dojo_id is None:
+    if not pairs:
         return []
     turma_ids = list({t.id for _, t in pairs})
+    dojo_id = pairs[0][1].dojo_id  # dojo da primeira turma (todas são do mesmo dojo)
     counts = await service.get_checkin_counts_today(
-        session, user.dojo_id, turma_ids
+        session, dojo_id, turma_ids
     )
     response: list[dict] = []
     for student, turma in pairs:

@@ -13,6 +13,7 @@ import { TurmasPage } from "./features/turmas/TurmasPage";
 import { CheckInsPage } from "./features/checkins/CheckInsPage";
 import { FaixasPage } from "./features/faixas/FaixasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { FinancePage } from "./features/finance/FinancePage";
 import { AppShell } from "./ui/AppShell";
 
 type PrivateRouteProps = {
@@ -147,6 +148,14 @@ export function App() {
         element={
           <PrivateRoute allowedRoles={["admin"]}>
             <SettingsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/financeiro"
+        element={
+          <PrivateRoute allowedRoles={["admin"]}>
+            <FinancePage />
           </PrivateRoute>
         }
       />

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
+from app.core.database import init_models
 from app.modules.auth.routes import router as auth_router
 from app.modules.dojos.routes import router as dojos_router
 from app.modules.students.routes import router as students_router
@@ -14,6 +15,7 @@ from app.modules.check_in.routes import router as checkin_router
 from app.modules.faixas.routes import router as faixas_router
 from app.modules.users.routes import router as users_router
 from app.modules.mural.routes import router as mural_router
+from app.modules.finance.routes import router as finance_router
 
 
 def create_app() -> FastAPI:
@@ -49,10 +51,26 @@ def create_app() -> FastAPI:
     app.include_router(faixas_router, prefix="/api/faixas", tags=["faixas"])
     app.include_router(users_router, prefix="/api/users", tags=["users"])
     app.include_router(mural_router, prefix="/api/mural", tags=["mural"])
+    app.include_router(finance_router, prefix="/api/finance", tags=["finance"])
 
-    static_dir = Path(__file__).resolve().parents[1] / "static"
+    # Diretório de arquivos estáticos (inclui comprovantes em static/receipts e logos de dojos)
+    # Usamos o diretório "static" dentro de backend/, compartilhado entre os módulos Python.
+    # Estrutura esperada:
+    #   <project_root>/
+    #       backend/
+    #           app/
+    #           static/
+    #               receipts/
+    #               uploads/dojos/
+    static_dir = Path(__file__).resolve().parents[2] / "static"
     static_dir.mkdir(exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.on_event("startup")
+    async def on_startup() -> None:
+        # Em desenvolvimento, garante que novas tabelas (como as de finanças)
+        # sejam criadas automaticamente se ainda não existirem.
+        await init_models()
 
     @app.get("/health", tags=["health"])
     async def health() -> dict:

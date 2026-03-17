@@ -23,6 +23,15 @@ type Turma = {
   tipo: string;
 };
 
+/** True se o horário de início da turma já passou (hoje, horário local). */
+function isTurmaPastStart(startTime: string): boolean {
+  const now = new Date();
+  const [h, m] = startTime.split(":").map(Number);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = (h ?? 0) * 60 + (m ?? 0);
+  return nowMins > startMins;
+}
+
 type CheckInResponse = {
   id: number;
 };
@@ -224,12 +233,14 @@ export default function MinhasTurmasScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+                const pastStart = isTurmaPastStart(item.start_time);
+                return (
                 <Pressable
                   onPress={() =>
                     router.push({
                       pathname: "/(tabs)/turma-checkins/[id]",
-                      params: { id: String(item.id), name: item.name },
+                      params: { id: String(item.id), name: item.name, tipo: item.tipo ?? "regular" },
                     })
                   }
                   style={{
@@ -244,6 +255,7 @@ export default function MinhasTurmasScreen() {
                     shadowOpacity: 0.08,
                     shadowRadius: 6,
                     elevation: 3,
+                    opacity: pastStart ? 0.7 : 1,
                   }}
                 >
                   <Text
@@ -251,6 +263,7 @@ export default function MinhasTurmasScreen() {
                       color: tokens.color.textPrimary,
                       fontSize: tokens.text.md,
                       fontWeight: "700",
+                      textDecorationLine: pastStart ? "line-through" : undefined,
                     }}
                   >
                     {item.name}
@@ -260,6 +273,7 @@ export default function MinhasTurmasScreen() {
                       color: tokens.color.textMuted,
                       marginTop: tokens.space.xs,
                       fontSize: tokens.text.sm,
+                      textDecorationLine: pastStart ? "line-through" : undefined,
                     }}
                   >
                     {item.day_of_week} — {item.start_time.slice(0, 5)} às{" "}
@@ -270,12 +284,24 @@ export default function MinhasTurmasScreen() {
                       color: tokens.color.textMuted,
                       marginTop: 2,
                       fontSize: tokens.text.sm,
+                      textDecorationLine: pastStart ? "line-through" : undefined,
                     }}
                   >
                     Vagas: {item.vagas_restantes ?? item.capacity} de{" "}
                     {item.capacity}
                   </Text>
-              {checkedInTurmaIds.has(item.id) ? (
+              {item.tipo === "kids" ? (
+                <Text
+                  style={{
+                    marginTop: tokens.space.md,
+                    color: tokens.color.textMuted,
+                    fontSize: tokens.text.sm,
+                    fontStyle: "italic",
+                  }}
+                >
+                  Check-in apenas pelo responsável (aba Filhos)
+                </Text>
+              ) : checkedInTurmaIds.has(item.id) ? (
                 <>
                   <Pressable
                     disabled={cancelMutation.isPending}
@@ -327,10 +353,10 @@ export default function MinhasTurmasScreen() {
               ) : (
                 <Pressable
                   onPress={() => mutation.mutate(item.id)}
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || pastStart}
                   style={{
                     marginTop: tokens.space.md,
-                    backgroundColor: tokens.color.primary,
+                    backgroundColor: pastStart ? tokens.color.textMuted : tokens.color.primary,
                     borderRadius: tokens.radius.md,
                     paddingVertical: tokens.space.sm,
                     alignItems: "center",
@@ -343,12 +369,13 @@ export default function MinhasTurmasScreen() {
                       fontSize: tokens.text.sm,
                     }}
                   >
-                    Fazer check-in
+                    {pastStart ? "Check-in encerrado" : "Fazer check-in"}
                   </Text>
                 </Pressable>
               )}
             </Pressable>
-          )}
+          );
+          }}
         />
       )}
       </View>

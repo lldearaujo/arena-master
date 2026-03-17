@@ -14,8 +14,13 @@ class CheckInRead(BaseModel):
     dojo_id: int
     turma_id: int
     student_id: int
+    student_name: str | None = None
     occurred_at: datetime
     checked_in_by_user_id: int | None = None
+    presence_confirmed_at: datetime | None = None
+    presence_confirmed_by_user_id: int | None = None
+    marked_absent_at: datetime | None = None
+    marked_absent_by_user_id: int | None = None
 
     class Config:
         from_attributes = True

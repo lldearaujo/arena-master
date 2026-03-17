@@ -13,8 +13,13 @@ from app.modules.dojos import schemas, service
 
 router = APIRouter()
 
-# Pasta para uploads (relativa ao diretório do backend)
-UPLOAD_DIR = Path(__file__).resolve().parents[3] / "static" / "uploads" / "dojos"
+# Pasta para uploads (deve ser compatível com o StaticFiles montado em app.main)
+# Em app.main, o diretório estático é definido como:
+#   static_dir = Path(__file__).resolve().parents[2] / "static"
+# Ou seja, com base na raiz "backend/".
+# Aqui usamos o mesmo diretório base para garantir que os arquivos de logo
+# fiquem acessíveis em /static/uploads/dojos/...
+UPLOAD_DIR = Path(__file__).resolve().parents[4] / "static" / "uploads" / "dojos"
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 

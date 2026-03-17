@@ -18,6 +18,17 @@ from app.modules.students.schemas import (
 )
 
 
+async def _get_default_active_plan_id(session: AsyncSession, dojo_id: int) -> int | None:
+    """Heurística simples: se existir algum plano ativo no dojo, pega o primeiro por ID."""
+    from app.models.finance import Plan
+
+    result = await session.execute(
+        select(Plan.id).where(and_(Plan.dojo_id == dojo_id, Plan.active.is_(True))).order_by(Plan.id)
+    )
+    row = result.first()
+    return int(row[0]) if row else None
+
+
 def _students_query(dojo_id: int) -> Select[tuple[Student]]:
     return select(Student).where(Student.dojo_id == dojo_id).order_by(Student.id)
 
@@ -85,6 +96,24 @@ async def create_student(
 
     # Vincula o usuário recém-criado ao aluno
     student.user_id = user.id
+
+    # Garante que todo aluno tenha um plano associado (se já existir algum plano ativo no dojo).
+    # A assinatura começa como pendente de pagamento e libera créditos apenas após confirmação do professor.
+    default_plan_id = await _get_default_active_plan_id(session, dojo_id)
+    if default_plan_id is not None:
+        from app.modules.finance import schemas as finance_schemas
+        from app.modules.finance import service as finance_service
+
+        try:
+            await finance_service.create_student_subscription(
+                session,
+                dojo_id,
+                student.id,
+                finance_schemas.StudentSubscriptionCreate(plan_id=default_plan_id),
+            )
+        except Exception:
+            # Não impede criação do aluno se algo financeiro falhar
+            pass
 
     await session.commit()
     await session.refresh(student)

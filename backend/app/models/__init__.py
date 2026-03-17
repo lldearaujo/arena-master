@@ -8,4 +8,10 @@ from app.models.turma import Turma  # noqa: F401
 from app.models.turma_enrollment import TurmaEnrollment  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.mural_post import MuralPost  # noqa: F401
+from app.models.finance import (  # noqa: F401
+    Payment,
+    PixConfig,
+    Plan,
+    StudentSubscription,
+)
 

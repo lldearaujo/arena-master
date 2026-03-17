@@ -36,6 +36,15 @@ type KidTurma = {
   };
 };
 
+/** True se o horário de início da turma já passou (hoje, horário local). */
+function isTurmaPastStart(startTime: string): boolean {
+  const now = new Date();
+  const [h, m] = startTime.split(":").map(Number);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = (h ?? 0) * 60 + (m ?? 0);
+  return nowMins > startMins;
+}
+
 export default function TurmaKidsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -230,7 +239,9 @@ export default function TurmaKidsScreen() {
                 </View>
               ) : null
             }
-            renderItem={({ item }) => (
+            renderItem={({ item }) => {
+              const pastStart = isTurmaPastStart(item.turma.start_time);
+              return (
               <Pressable
                 onPress={() =>
                   router.push({
@@ -250,6 +261,7 @@ export default function TurmaKidsScreen() {
                   shadowOpacity: 0.08,
                   shadowRadius: 6,
                   elevation: 3,
+                  opacity: pastStart ? 0.7 : 1,
                 }}
               >
                 <Text
@@ -267,6 +279,7 @@ export default function TurmaKidsScreen() {
                     color: tokens.color.textPrimary,
                     fontSize: tokens.text.md,
                     fontWeight: "700",
+                    textDecorationLine: pastStart ? "line-through" : undefined,
                   }}
                 >
                   {item.turma.name}
@@ -276,6 +289,7 @@ export default function TurmaKidsScreen() {
                     color: tokens.color.textMuted,
                     marginTop: tokens.space.xs,
                     fontSize: tokens.text.sm,
+                    textDecorationLine: pastStart ? "line-through" : undefined,
                   }}
                 >
                   {item.turma.day_of_week} — {item.turma.start_time.slice(0, 5)} às{" "}
@@ -287,6 +301,7 @@ export default function TurmaKidsScreen() {
                       color: tokens.color.textMuted,
                       marginTop: 2,
                       fontSize: tokens.text.sm,
+                      textDecorationLine: pastStart ? "line-through" : undefined,
                     }}
                   >
                     Vagas: {item.turma.vagas_restantes ?? item.turma.capacity} de{" "}
@@ -349,10 +364,10 @@ export default function TurmaKidsScreen() {
                         studentId: item.student.id,
                       })
                     }
-                    disabled={mutation.isPending}
+                    disabled={mutation.isPending || pastStart}
                     style={{
                       marginTop: tokens.space.md,
-                      backgroundColor: tokens.color.primary,
+                      backgroundColor: pastStart ? tokens.color.textMuted : tokens.color.primary,
                       borderRadius: tokens.radius.md,
                       paddingVertical: tokens.space.sm,
                       alignItems: "center",
@@ -365,12 +380,13 @@ export default function TurmaKidsScreen() {
                         fontSize: tokens.text.sm,
                       }}
                     >
-                      Fazer check-in
+                      {pastStart ? "Check-in encerrado" : "Fazer check-in"}
                     </Text>
                   </Pressable>
                 )}
               </Pressable>
-            )}
+            );
+            }}
           />
         )}
       </View>

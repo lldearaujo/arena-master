@@ -165,9 +165,10 @@ async def unenroll_student(
 
 
 def _today_day_abbrev() -> str:
-    """Retorna abreviação do dia atual: seg, ter, qua, qui, sex, sab, dom."""
+    """Retorna abreviação do dia atual: seg, ter, qua, qui, sex, sab, dom.
+    Usa data local do servidor para coincidir com o dia do usuário (ex.: Brasil)."""
     abbrevs = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
-    return abbrevs[datetime.now(UTC).weekday()]
+    return abbrevs[datetime.now().weekday()]
 
 
 async def turmas_for_student(
@@ -226,7 +227,17 @@ async def turmas_for_guardian_kids(
     user: User,
 ) -> list[tuple[Student, Turma]]:
     # user é responsável, não necessariamente aluno
-    if user.dojo_id is None:
+    # Usa dojo_id do usuário ou, se não tiver, do primeiro vínculo guardian (responsável pode não ter dojo setado)
+    dojo_id = user.dojo_id
+    if dojo_id is None:
+        fallback = await session.execute(
+            select(StudentGuardian.dojo_id)
+            .where(StudentGuardian.user_id == user.id)
+            .limit(1)
+        )
+        row = fallback.one_or_none()
+        dojo_id = row[0] if row else None
+    if dojo_id is None:
         return []
 
     today = _today_day_abbrev()
@@ -237,7 +248,7 @@ async def turmas_for_guardian_kids(
         .join(StudentGuardian, Student.id == StudentGuardian.student_id)
         .where(
             and_(
-                StudentGuardian.dojo_id == user.dojo_id,
+                StudentGuardian.dojo_id == dojo_id,
                 StudentGuardian.user_id == user.id,
             )
         )
@@ -255,7 +266,7 @@ async def turmas_for_guardian_kids(
         .where(
             and_(
                 Student.id.in_(student_ids),
-                Turma.dojo_id == user.dojo_id,
+                Turma.dojo_id == dojo_id,
                 Turma.tipo == "kids",
                 TurmaEnrollment.active.is_(True),
                 Turma.active.is_(True),

@@ -70,11 +70,21 @@ async function deleteItem(key: string) {
 export async function persistSession() {
   const state = useAuthStore.getState();
   if (!state.tokens || !state.user) return;
+  // Evita armazenar avatares enormes (data URL) no SecureStore, que tem limite ~2KB.
+  // O avatar completo continua vindo do backend em /api/users/me.
+  const user = state.user;
+  const safeUser =
+    user.avatarUrl &&
+    typeof user.avatarUrl === "string" &&
+    user.avatarUrl.startsWith("data:") &&
+    user.avatarUrl.length > 2000
+      ? { ...user, avatarUrl: null }
+      : user;
   await setItem(
     SESSION_KEY,
     JSON.stringify({
       tokens: state.tokens,
-      user: state.user,
+      user: safeUser,
     }),
   );
 }

@@ -10,12 +10,37 @@ from app.models.turma import Turma
 from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
 from app.modules.check_in.schemas import CheckInCreate, CheckInFilter
+from app.modules.finance.service import consume_credit_for_checkin, refund_credit_for_checkin
 
 
 def _checkins_query(dojo_id: int) -> Select[tuple[CheckIn]]:
     return select(CheckIn).where(CheckIn.dojo_id == dojo_id).order_by(
         CheckIn.occurred_at.desc()
     )
+
+
+def _day_abbrev_now() -> str:
+    """Abreviação do dia atual (seg, ter, ...) em horário local."""
+    abbrevs = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+    return abbrevs[datetime.now().weekday()]
+
+
+def _check_checkin_allowed_until_start(turma: Turma) -> None:
+    """
+    Verifica se ainda é possível fazer check-in: apenas no dia da turma
+    e até o horário de início (inclusive). Após o início, bloqueia.
+    """
+    now_local = datetime.now()
+    today_abbrev = _day_abbrev_now()
+    turma_days = [d.strip() for d in turma.day_of_week.split(",")]
+    if today_abbrev not in turma_days:
+        raise ValueError(
+            "Check-in só é permitido no dia da turma. Hoje não é dia desta turma."
+        )
+    if now_local.time() > turma.start_time:
+        raise ValueError(
+            "Não é mais possível fazer check-in após o horário de início da turma."
+        )
 
 
 async def _get_turma_for_dojo(
@@ -115,6 +140,8 @@ async def create_checkin(
     if turma is None:
         raise ValueError("Turma inválida para este dojo")
 
+    _check_checkin_allowed_until_start(turma)
+
     now = datetime.now(UTC)
 
     # Admin pode fazer check-in manual para qualquer aluno do dojo
@@ -132,6 +159,9 @@ async def create_checkin(
             student.id,
             now,
         )
+
+        # consome 1 crédito da assinatura ativa
+        await consume_credit_for_checkin(session, dojo_id, student.id, now)
 
         checkin = CheckIn(
             dojo_id=dojo_id,
@@ -171,6 +201,8 @@ async def create_checkin(
                 now,
             )
 
+            await consume_credit_for_checkin(session, dojo_id, self_student.id, now)
+
             checkin = CheckIn(
                 dojo_id=dojo_id,
                 turma_id=turma.id,
@@ -183,29 +215,30 @@ async def create_checkin(
             await session.refresh(checkin)
             return checkin
 
-        # Turma KIDS: responsável faz check-in para o filho, ou o próprio aluno (criança) se fizer para si
+        # Turma KIDS: apenas responsáveis podem fazer check-in (para o aluno kid). Alunos convencionais não podem.
         if turma.tipo == "kids":
-            if data.student_id is not None:
-                # Responsável fazendo check-in para o filho
-                kid = await _get_student_in_dojo(session, dojo_id, data.student_id)
-                if kid is None:
-                    raise ValueError("Aluno inválido para este dojo")
-                guardian_result = await session.execute(
-                    select(StudentGuardian).where(
-                        and_(
-                            StudentGuardian.dojo_id == dojo_id,
-                            StudentGuardian.user_id == user.id,
-                            StudentGuardian.student_id == kid.id,
-                        )
+            if data.student_id is None:
+                raise ValueError(
+                    "Em turmas kids apenas responsáveis podem fazer check-in. "
+                    "Informe o aluno (student_id) que deseja fazer check-in."
+                )
+            kid = await _get_student_in_dojo(session, dojo_id, data.student_id)
+            if kid is None:
+                raise ValueError("Aluno inválido para este dojo")
+            guardian_result = await session.execute(
+                select(StudentGuardian).where(
+                    and_(
+                        StudentGuardian.dojo_id == dojo_id,
+                        StudentGuardian.user_id == user.id,
+                        StudentGuardian.student_id == kid.id,
                     )
                 )
-                if guardian_result.scalar_one_or_none() is None:
-                    raise ValueError("Usuário não é responsável por este aluno")
-            elif self_student is not None:
-                # O próprio aluno (criança) fazendo check-in em turma kids
-                kid = self_student
-            else:
-                raise ValueError("student_id é obrigatório para turmas KIDS ou usuário deve ter aluno vinculado")
+            )
+            if guardian_result.scalar_one_or_none() is None:
+                raise ValueError(
+                    "Em turmas kids apenas responsáveis podem fazer check-in. "
+                    "Você não é responsável por este aluno."
+                )
 
             await _ensure_capacity_and_idempotent(
                 session,
@@ -214,6 +247,8 @@ async def create_checkin(
                 kid.id,
                 now,
             )
+
+            await consume_credit_for_checkin(session, dojo_id, kid.id, now)
 
             checkin = CheckIn(
                 dojo_id=dojo_id,
@@ -335,8 +370,15 @@ async def list_checkins(
     session: AsyncSession,
     dojo_id: int,
     filters: CheckInFilter,
-) -> list[CheckIn]:
-    query = _checkins_query(dojo_id)
+) -> list[tuple[CheckIn, str | None]]:
+    from app.models.student import Student
+
+    query = (
+        select(CheckIn, Student.name)
+        .join(Student, Student.id == CheckIn.student_id)
+        .where(CheckIn.dojo_id == dojo_id)
+        .order_by(CheckIn.occurred_at.desc())
+    )
 
     conditions = []
     if filters.turma_id is not None:
@@ -356,7 +398,7 @@ async def list_checkins(
         query = query.where(and_(*conditions))
 
     result = await session.execute(query)
-    return list(result.scalars().all())
+    return list(result.all())
 
 
 async def cancel_checkin(
@@ -406,4 +448,65 @@ async def cancel_checkin(
     await session.delete(checkin)
     await session.commit()
     return True
+
+
+async def confirm_presence(
+    session: AsyncSession,
+    admin: User,
+    checkin_id: int,
+) -> CheckIn | None:
+    """
+    Marca um check-in como presença confirmada pelo professor (admin).
+    Retorna o check-in atualizado ou None se não encontrado/não permitido.
+    """
+    if admin.role != "admin" or admin.dojo_id is None:
+        return None
+    result = await session.execute(
+        select(CheckIn).where(
+            and_(CheckIn.id == checkin_id, CheckIn.dojo_id == admin.dojo_id)
+        )
+    )
+    checkin = result.scalar_one_or_none()
+    if checkin is None:
+        return None
+    now = datetime.now(UTC)
+    checkin.presence_confirmed_at = now
+    checkin.presence_confirmed_by_user_id = admin.id
+    await session.commit()
+    await session.refresh(checkin)
+    return checkin
+
+
+async def mark_checkin_absent(
+    session: AsyncSession,
+    admin: User,
+    checkin_id: int,
+) -> CheckIn | None:
+    """
+    Marca um check-in como ausente (aluno não veio). Devolve 1 crédito ao score
+    do aluno. Só permite se o check-in ainda não foi confirmado nem marcado ausente.
+    """
+    if admin.role != "admin" or admin.dojo_id is None:
+        return None
+    result = await session.execute(
+        select(CheckIn).where(
+            and_(CheckIn.id == checkin_id, CheckIn.dojo_id == admin.dojo_id)
+        )
+    )
+    checkin = result.scalar_one_or_none()
+    if checkin is None:
+        return None
+    if checkin.presence_confirmed_at is not None:
+        return None  # já confirmado como presente
+    if checkin.marked_absent_at is not None:
+        return None  # já marcado ausente
+    now = datetime.now(UTC)
+    checkin.marked_absent_at = now
+    checkin.marked_absent_by_user_id = admin.id
+    await refund_credit_for_checkin(
+        session, admin.dojo_id, checkin.student_id, checkin.occurred_at
+    )
+    await session.commit()
+    await session.refresh(checkin)
+    return checkin
 

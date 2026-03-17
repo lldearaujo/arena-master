@@ -181,12 +181,13 @@ export default function MuralScreen() {
           onChangeText={setContent}
           multiline
           style={{
+            backgroundColor: "#fff",
             borderWidth: 1,
             borderColor: tokens.color.borderStrong,
             borderRadius: tokens.radius.md,
             paddingHorizontal: tokens.space.sm,
             paddingVertical: 6,
-            color: tokens.color.textOnPrimary,
+            color: tokens.color.textPrimary,
             minHeight: 72,
             textAlignVertical: "top",
             marginBottom: tokens.space.sm,

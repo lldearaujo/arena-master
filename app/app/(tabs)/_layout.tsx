@@ -1,9 +1,4 @@
-import {
-  ScrollText,
-  SquareCheckBig,
-  User,
-  Users,
-} from "lucide-react-native";
+import { Receipt, ScrollText, SquareCheckBig, User, Users } from "lucide-react-native";
 import { Tabs } from "expo-router";
 import { Redirect } from "expo-router";
 
@@ -14,6 +9,7 @@ const TAB_ICONS = {
   mural: ScrollText,
   index: SquareCheckBig,
   filhos: Users,
+  financeiro: Receipt,
   perfil: User,
 } as const;
 
@@ -95,6 +91,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="financeiro"
+        options={{
+          title: "Financeiro",
+          headerShown: false,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon routeName="financeiro" focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="perfil"
         options={{
           title: "Perfil",
@@ -107,6 +113,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="turma-checkins/[id]"
         options={{ href: null, title: "Presenças", headerShown: false }}
+      />
+      <Tabs.Screen
+        name="alterar-plano"
+        options={{ href: null, title: "Alterar plano", headerShown: false }}
       />
     </Tabs>
   );

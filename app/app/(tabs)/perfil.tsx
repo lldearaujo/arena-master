@@ -133,9 +133,41 @@ export default function PerfilScreen() {
       });
       return res.data;
     },
-    onSuccess: (data) => {
-      updateUser({ avatarUrl: data.avatar_url ?? null });
-      void persistSession();
+    onSuccess: async (data) => {
+      const avatarUrl = data.avatar_url ?? null;
+      updateUser({ avatarUrl });
+
+      // Evita tentar persistir um avatar enorme em SecureStore,
+      // o que gera warning e pode falhar em alguns dispositivos.
+      if (avatarUrl && avatarUrl.startsWith("data:") && avatarUrl.length > 2000) {
+        if (Platform.OS === "web") {
+          // eslint-disable-next-line no-alert
+          alert(
+            "Sua foto foi atualizada nesta sessão, mas pode não ser salva permanentemente neste dispositivo por causa do tamanho do arquivo.",
+          );
+        } else {
+          Alert.alert(
+            "Foto muito grande",
+            "Sua foto foi atualizada nesta sessão, mas pode não ser salva permanentemente neste dispositivo por causa do tamanho do arquivo.",
+          );
+        }
+        return;
+      }
+
+      try {
+        await persistSession();
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Não foi possível salvar os dados de sessão no dispositivo.";
+        if (Platform.OS === "web") {
+          // eslint-disable-next-line no-alert
+          alert(msg);
+        } else {
+          Alert.alert("Erro ao salvar sessão", msg);
+        }
+      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["user-me"] });
@@ -164,6 +196,7 @@ export default function PerfilScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
+        // Usa apenas a API estável compatível com sua versão
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
@@ -371,7 +404,7 @@ export default function PerfilScreen() {
           </Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: tokens.space.lg }}>
-            {/* Assiduidade */}
+            {/* Presença */}
             <View style={{ flex: 1, minWidth: width > 400 ? 100 : "100%" }}>
               <View style={{ alignItems: "center", marginBottom: tokens.space.sm }}>
                 <Svg width={70} height={70} style={{ transform: [{ rotate: "-90deg" }] }}>
@@ -415,7 +448,7 @@ export default function PerfilScreen() {
                   fontWeight: "600",
                 }}
               >
-                ASSIDUIDADE
+                PRESENÇA
               </Text>
               <Text
                 style={{
@@ -425,7 +458,7 @@ export default function PerfilScreen() {
                   marginTop: 2,
                 }}
               >
-                Comparecimento (últimos 30 dias)
+                (últimos 30 dias)
               </Text>
             </View>
 

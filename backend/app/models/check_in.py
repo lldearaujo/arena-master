@@ -23,4 +23,15 @@ class CheckIn(Base):
     checked_in_by_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-
+    presence_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    presence_confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    marked_absent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    marked_absent_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )

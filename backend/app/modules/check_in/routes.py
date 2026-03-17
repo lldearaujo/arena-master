@@ -99,6 +99,44 @@ async def cancel_checkin(
         )
 
 
+@router.post(
+    "/{checkin_id}/confirm",
+    response_model=schemas.CheckInRead,
+)
+async def confirm_checkin_presence(
+    checkin_id: int,
+    admin: AdminDep,
+    session: SessionDep,
+) -> schemas.CheckInRead:
+    """Confirma a presença do aluno para um check-in (apenas admin)."""
+    checkin = await service.confirm_presence(session, admin, checkin_id)
+    if checkin is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Check-in não encontrado ou você não pode confirmá-lo",
+        )
+    return schemas.CheckInRead.model_validate(checkin)
+
+
+@router.post(
+    "/{checkin_id}/mark-absent",
+    response_model=schemas.CheckInRead,
+)
+async def mark_checkin_absent(
+    checkin_id: int,
+    admin: AdminDep,
+    session: SessionDep,
+) -> schemas.CheckInRead:
+    """Marca o aluno como ausente (não veio) e devolve 1 crédito ao score (apenas admin)."""
+    checkin = await service.mark_checkin_absent(session, admin, checkin_id)
+    if checkin is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Check-in não encontrado, já confirmado ou já marcado como ausente",
+        )
+    return schemas.CheckInRead.model_validate(checkin)
+
+
 @router.get("/", response_model=list[schemas.CheckInRead])
 async def list_checkins(
     admin: AdminDep,
@@ -122,6 +160,11 @@ async def list_checkins(
         start_date=_parse(start_date),
         end_date=_parse(end_date),
     )
-    checkins = await service.list_checkins(session, admin.dojo_id, filters)
-    return [schemas.CheckInRead.model_validate(c) for c in checkins]
+    rows = await service.list_checkins(session, admin.dojo_id, filters)
+    response: list[schemas.CheckInRead] = []
+    for checkin, student_name in rows:
+        base = schemas.CheckInRead.model_validate(checkin)
+        enriched = base.model_copy(update={"student_name": student_name})
+        response.append(enriched)
+    return response
 
