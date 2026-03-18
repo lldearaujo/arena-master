@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware  # pyright: ignore[reportMissingImports]
 
 from app.core.config import get_settings
 from app.core.database import init_models
@@ -26,6 +27,11 @@ def create_app() -> FastAPI:
         title="Arena Master API",
         version="0.1.0",
     )
+
+    # Em produção estamos atrás de um reverse proxy (EasyPanel) que termina TLS.
+    # Precisamos respeitar X-Forwarded-Proto/For para que redirects (ex.: barra final)
+    # não "desçam" para http:// e gerem Mixed Content no navegador.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     dev_origins = [
         "http://localhost:5173",

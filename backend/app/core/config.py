@@ -1,8 +1,15 @@
 from functools import lru_cache
 
+from pathlib import Path
 from pydantic import Field
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+_THIS_FILE = Path(__file__).resolve()
+# backend/app/core/config.py -> backend/ (parents[2]) -> repo root (parents[3])
+_BACKEND_ROOT = _THIS_FILE.parents[2]
+_REPO_ROOT = _THIS_FILE.parents[3]
 
 
 class Settings(BaseSettings):
@@ -44,9 +51,15 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        # Em produção normalmente as variáveis vêm do ambiente, mas também aceitamos
-        # `.env.production` quando existir no diretório de execução.
-        env_file = (".env", ".env.production")
+        # Em produção normalmente as variáveis vêm do ambiente. Ainda assim, para
+        # facilitar deploys simples, tentamos carregar `.env`/`.env.production`
+        # tanto na raiz do repositório quanto em `backend/`, sem depender do cwd.
+        env_file = (
+            str(_REPO_ROOT / ".env"),
+            str(_REPO_ROOT / ".env.production"),
+            str(_BACKEND_ROOT / ".env"),
+            str(_BACKEND_ROOT / ".env.production"),
+        )
         env_file_encoding = "utf-8"
         case_sensitive = False
 
