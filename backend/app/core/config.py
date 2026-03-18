@@ -44,7 +44,9 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        # Em produção normalmente as variáveis vêm do ambiente, mas também aceitamos
+        # `.env.production` quando existir no diretório de execução.
+        env_file = (".env", ".env.production")
         env_file_encoding = "utf-8"
         case_sensitive = False
 
