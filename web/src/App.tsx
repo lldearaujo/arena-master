@@ -16,6 +16,7 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { FinancePage } from "./features/finance/FinancePage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { AppShell } from "./ui/AppShell";
+import { PrivacyPolicyPage } from "./features/privacy/PrivacyPolicyPage";
 
 type PrivateRouteProps = {
   children: JSX.Element;
@@ -72,6 +73,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
       <Route
         path="/dashboard"
         element={

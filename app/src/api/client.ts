@@ -16,6 +16,12 @@ function resolveBaseUrl(): string {
     return process.env.EXPO_PUBLIC_API_URL;
   }
 
+  // Em builds instalados (produção), `hostUri` normalmente não existe.
+  // Usamos o backend público para evitar "Network Error" por fallback em localhost.
+  if (!__DEV__) {
+    return "https://arenamasterbk.ideiasobria.online";
+  }
+
   // Em dispositivos/Expo Go, usamos o host do próprio servidor Expo
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {

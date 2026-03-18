@@ -62,6 +62,9 @@ class Settings(BaseSettings):
         )
         env_file_encoding = "utf-8"
         case_sensitive = False
+        # Permite que `.env`/`.env.production` contenham variáveis extras (ex.: do web)
+        # sem quebrar o backend.
+        extra = "ignore"
 
 
 @lru_cache(maxsize=1)
