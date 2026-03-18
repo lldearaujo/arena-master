@@ -1,16 +1,13 @@
 import axios, { AxiosError } from "axios";
 import { useAuthStore } from "../store/auth";
 
-// URL base da API – em produção VITE_API_URL é injetada pelo build (Vite/Dockerfile).
+// URL base da API – em produção VITE_API_URL é injetada pelo build.
 // Fallback aponta para o domínio de produção com HTTPS para evitar Mixed Content.
 const rawBaseURL =
   import.meta.env.VITE_API_URL || "https://arenamasterbk.ideiasobria.online";
 
-// Garante HTTPS sempre que a página for servida via HTTPS (evita Mixed Content)
-const apiBaseURL =
-  typeof window !== "undefined" && window.location.protocol === "https:"
-    ? rawBaseURL.replace(/^http:\/\//i, "https://")
-    : rawBaseURL;
+// Sempre garante HTTPS — corrige caso VITE_API_URL tenha sido configurada com http://
+const apiBaseURL = rawBaseURL.replace(/^http:\/\//i, "https://");
 
 export const api = axios.create({
   baseURL: apiBaseURL,
