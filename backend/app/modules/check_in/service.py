@@ -10,7 +10,10 @@ from app.models.turma import Turma
 from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
 from app.modules.check_in.schemas import CheckInCreate, CheckInFilter
-from app.modules.finance.service import consume_credit_for_checkin, refund_credit_for_checkin
+from app.modules.finance.service import (
+    consume_credit_for_checkin,
+    get_active_subscription_for_student,
+)
 
 
 #
@@ -36,6 +39,25 @@ def _day_abbrev_now() -> str:
     """Abreviação do dia atual (seg, ter, ...) no fuso do Brasil."""
     abbrevs = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
     return abbrevs[_now_brazil().weekday()]
+
+
+async def _ensure_credit_available(
+    session: AsyncSession,
+    dojo_id: int,
+    student_id: int,
+    when: datetime,
+) -> None:
+    """
+    Garante que o aluno tem créditos disponíveis (sem consumir).
+    A efetivação do decremento acontece quando o professor confirma presença.
+    """
+    active_sub = await get_active_subscription_for_student(
+        session, dojo_id, student_id, today=when.date()
+    )
+    if active_sub is None:
+        raise ValueError(
+            "Aluno não possui créditos ativos ou plano vigente para realizar check-in."
+        )
 
 
 def _check_checkin_allowed_until_start(turma: Turma) -> None:
@@ -174,8 +196,9 @@ async def create_checkin(
             now,
         )
 
-        # consome 1 crédito da assinatura ativa
-        await consume_credit_for_checkin(session, dojo_id, student.id, now)
+        # Não consome crédito aqui.
+        # O decremento acontece apenas quando o professor confirmar presença.
+        await _ensure_credit_available(session, dojo_id, student.id, now)
 
         checkin = CheckIn(
             dojo_id=dojo_id,
@@ -215,7 +238,9 @@ async def create_checkin(
                 now,
             )
 
-            await consume_credit_for_checkin(session, dojo_id, self_student.id, now)
+            # Não consome crédito aqui.
+            # O decremento acontece apenas quando o professor confirmar presença.
+            await _ensure_credit_available(session, dojo_id, self_student.id, now)
 
             checkin = CheckIn(
                 dojo_id=dojo_id,
@@ -262,7 +287,9 @@ async def create_checkin(
                 now,
             )
 
-            await consume_credit_for_checkin(session, dojo_id, kid.id, now)
+            # Não consome crédito aqui.
+            # O decremento acontece apenas quando o professor confirmar presença.
+            await _ensure_credit_available(session, dojo_id, kid.id, now)
 
             checkin = CheckIn(
                 dojo_id=dojo_id,
@@ -456,6 +483,11 @@ async def cancel_checkin(
     if checkin is None:
         return False
 
+    # Após confirmação, o crédito já pode ter sido consumido.
+    # Para não gerar inconsistência financeira, não permitimos cancelamento.
+    if checkin.presence_confirmed_at is not None:
+        return False
+
     if user.role == "admin":
         await session.delete(checkin)
         await session.commit()
@@ -506,7 +538,17 @@ async def confirm_presence(
     checkin = result.scalar_one_or_none()
     if checkin is None:
         return None
+
+    if checkin.marked_absent_at is not None:
+        return None  # já marcado como ausente
+    if checkin.presence_confirmed_at is not None:
+        return checkin  # idempotente: não consome novamente
+
     now = datetime.now(UTC)
+
+    # Consome 1 crédito somente quando o professor confirmar presença.
+    await consume_credit_for_checkin(session, admin.dojo_id, checkin.student_id, now)
+
     checkin.presence_confirmed_at = now
     checkin.presence_confirmed_by_user_id = admin.id
     await session.commit()
@@ -520,8 +562,10 @@ async def mark_checkin_absent(
     checkin_id: int,
 ) -> CheckIn | None:
     """
-    Marca um check-in como ausente (aluno não veio). Devolve 1 crédito ao score
-    do aluno. Só permite se o check-in ainda não foi confirmado nem marcado ausente.
+    Marca um check-in como ausente (aluno não veio).
+    Só permite se o check-in ainda não foi confirmado nem marcado ausente.
+    Como os créditos são consumidos apenas na confirmação do professor,
+    não há "devolução" aqui.
     """
     if admin.role != "admin" or admin.dojo_id is None:
         return None
@@ -540,9 +584,6 @@ async def mark_checkin_absent(
     now = datetime.now(UTC)
     checkin.marked_absent_at = now
     checkin.marked_absent_by_user_id = admin.id
-    await refund_credit_for_checkin(
-        session, admin.dojo_id, checkin.student_id, checkin.occurred_at
-    )
     await session.commit()
     await session.refresh(checkin)
     return checkin

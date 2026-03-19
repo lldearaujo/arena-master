@@ -109,7 +109,13 @@ async def confirm_checkin_presence(
     session: SessionDep,
 ) -> schemas.CheckInRead:
     """Confirma a presença do aluno para um check-in (apenas admin)."""
-    checkin = await service.confirm_presence(session, admin, checkin_id)
+    try:
+        checkin = await service.confirm_presence(session, admin, checkin_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     if checkin is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -127,7 +133,7 @@ async def mark_checkin_absent(
     admin: AdminDep,
     session: SessionDep,
 ) -> schemas.CheckInRead:
-    """Marca o aluno como ausente (não veio) e devolve 1 crédito ao score (apenas admin)."""
+    """Marca o aluno como ausente (não veio) (apenas admin)."""
     checkin = await service.mark_checkin_absent(session, admin, checkin_id)
     if checkin is None:
         raise HTTPException(
