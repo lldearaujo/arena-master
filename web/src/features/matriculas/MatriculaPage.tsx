@@ -237,6 +237,26 @@ export function MatriculaPage() {
     >
       <div style={{ maxWidth: 920, margin: "0 auto" }}>
         <div style={{ ...cardStyle, marginBottom: tokens.space.lg }}>
+          {logoUrl && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginBottom: tokens.space.md,
+              }}
+            >
+              <img
+                src={logoUrl}
+                alt={data.dojo.name}
+                style={{
+                  width: "50%",
+                  maxWidth: 260,
+                  height: "auto",
+                  objectFit: "contain",
+                }}
+              />
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", gap: tokens.space.lg, flexWrap: "wrap" }}>
             <div>
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: tokens.color.textPrimary }}>
@@ -339,17 +359,24 @@ export function MatriculaPage() {
                       </div>
                     </div>
 
-                    <div style={{ flex: "1 1 240px" }}>
-                      <div style={{ display: "flex", gap: tokens.space.md, alignItems: "center" }}>
-                        {logoUrl && (
-                          <img
-                            src={logoUrl}
-                            alt={data.dojo.name}
-                            style={{ width: 100, height: 64, objectFit: "contain" }}
-                          />
-                        )}
-                      </div>
-                      <p style={{ margin: `${tokens.space.md}px 0 0 0`, color: tokens.color.textMuted, fontSize: tokens.text.sm }}>
+                    <div
+                      style={{
+                        flex: "1 1 240px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        textAlign: "center",
+                      }}
+                    >
+                      <p
+                        style={{
+                          margin: 0,
+                          color: tokens.color.textMuted,
+                          fontSize: tokens.text.sm,
+                          lineHeight: 1.5,
+                        }}
+                      >
                         {type === "regular"
                           ? "Crie sua conta e escolha seu plano."
                           : "Crie a conta do responsável (perfil mostra os dados do aluno/criança)."}
