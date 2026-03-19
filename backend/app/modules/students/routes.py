@@ -109,6 +109,31 @@ async def get_student(
     return await _student_to_read(session, student)
 
 
+@router.post(
+    "/{student_id}/reset-password",
+    response_model=schemas.StudentPasswordResetResponse,
+)
+async def reset_student_password(
+    student_id: int,
+    admin: AdminDep,
+    session: SessionDep,
+) -> schemas.StudentPasswordResetResponse:
+    """Redefine a senha de acesso do aluno para o padrão (aluno + ID com 4 dígitos)."""
+    result = await service.reset_student_password_to_default(
+        session, admin.dojo_id, student_id
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aluno não encontrado ou sem conta de acesso vinculada",
+        )
+    default_password, login_email = result
+    return schemas.StudentPasswordResetResponse(
+        default_password=default_password,
+        login_email=login_email,
+    )
+
+
 @router.put("/{student_id}", response_model=schemas.StudentRead)
 async def update_student(
     student_id: int,

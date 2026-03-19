@@ -49,6 +49,13 @@ class StudentCreatedResponse(BaseModel):
     login_email: str
 
 
+class StudentPasswordResetResponse(BaseModel):
+    """Resposta após o professor zerar a senha do aluno para o padrão."""
+
+    default_password: str
+    login_email: str
+
+
 class StudentWithLoginRead(StudentRead):
     login_email: str | None = None
     is_active: bool = True

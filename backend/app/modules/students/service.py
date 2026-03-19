@@ -18,6 +18,11 @@ from app.modules.students.schemas import (
 )
 
 
+def default_password_for_student_id(student_id: int) -> str:
+    """Senha padrão de acesso ao app (mesma regra de create_student)."""
+    return f"aluno{student_id:04d}"
+
+
 async def _get_default_active_plan_id(session: AsyncSession, dojo_id: int) -> int | None:
     """Heurística simples: se existir algum plano ativo no dojo, pega o primeiro por ID."""
     from app.models.finance import Plan
@@ -118,6 +123,31 @@ async def create_student(
     await session.commit()
     await session.refresh(student)
     return student, initial_password, login_email
+
+
+async def reset_student_password_to_default(
+    session: AsyncSession,
+    dojo_id: int,
+    student_id: int,
+) -> tuple[str, str] | None:
+    """
+    Redefine a senha do usuário vinculado ao aluno para o padrão do sistema.
+    Retorna (senha_em_texto_plano, email_de_login) ou None se aluno/usuário inválido.
+    """
+    student = await get_student(session, dojo_id, student_id)
+    if student is None or student.user_id is None:
+        return None
+
+    result = await session.execute(select(User).where(User.id == student.user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return None
+
+    plain = default_password_for_student_id(student.id)
+    user.password_hash = get_password_hash(plain)
+    await session.commit()
+    await session.refresh(user)
+    return plain, user.email
 
 
 async def update_student(

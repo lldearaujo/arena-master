@@ -4,6 +4,36 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { tokens } from "../../ui/tokens";
 
+/** Cadeado + seta de redefinir — leitura clara em 16px (senha / voltar ao padrão). */
+function IconResetPassword(props: { size?: number }) {
+  const s = props.size ?? 16;
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M8 11V7.5a4 4 0 0 1 8 0V11"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="5" y="11" width="14" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M17.5 4.25a5.25 5.25 0 0 1 3.6 3.35"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M21.5 3v4.25h-4"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconShare(props: { size?: number }) {
   const s = props.size ?? 16;
   return (
@@ -389,6 +419,11 @@ type StudentCreatedResponse = {
   login_email: string;
 };
 
+type StudentPasswordResetResponse = {
+  default_password: string;
+  login_email: string;
+};
+
 export function StudentsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
@@ -550,6 +585,34 @@ export function StudentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (vars: { id: number; name: string }) => {
+      const res = await api.post<StudentPasswordResetResponse>(
+        `/api/students/${vars.id}/reset-password`,
+      );
+      return { ...res.data, name: vars.name };
+    },
+    onSuccess: (payload) => {
+      const message = `Senha redefinida para o padrão.\n\n${payload.name}\nLogin: ${payload.login_email}\nSenha: ${payload.default_password}`;
+      alert(message);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "data" in err.response &&
+        err.response.data &&
+        typeof err.response.data === "object" &&
+        "detail" in err.response.data
+          ? String((err.response.data as { detail: unknown }).detail)
+          : "Não foi possível redefinir a senha.";
+      alert(msg);
     },
   });
 
@@ -1008,6 +1071,36 @@ export function StudentsPage() {
                                     style={{ ...ui.iconBtn }}
                                   >
                                     <IconShare />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title={
+                                      student.user_id
+                                        ? "Zerar senha para o padrão (aluno + ID)"
+                                        : "Aluno sem conta de acesso"
+                                    }
+                                    aria-label="Zerar senha para o padrão"
+                                    disabled={!student.user_id || resetPasswordMutation.isPending}
+                                    onClick={() => {
+                                      if (
+                                        !window.confirm(
+                                          `Redefinir a senha de ${student.name} para o padrão do sistema? O aluno precisará usar a nova senha no app.`,
+                                        )
+                                      ) {
+                                        return;
+                                      }
+                                      resetPasswordMutation.mutate({
+                                        id: student.id,
+                                        name: student.name,
+                                      });
+                                    }}
+                                    className="am-btn"
+                                    style={{
+                                      ...ui.iconBtn,
+                                      opacity: student.user_id ? 1 : 0.35,
+                                    }}
+                                  >
+                                    <IconResetPassword />
                                   </button>
                                   <button
                                     type="button"
