@@ -3,7 +3,7 @@
     "name": "Arena Master",
     "slug": "arena-master",
     "scheme": "arena-master",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./assets/arena-master-app.png",
     "ios": {
@@ -36,8 +36,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a2a03dbf-5c6a-431f-a88f-829207895039"
+        "projectId": "c96ae5ec-303f-4764-ab8b-06b9e1fba7c7"
       }
-    }
+    },
+    "owner": "l2a-soft"
   }
 }

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { api } from "../../api/client";
 import { useAuthStore } from "../../store/auth";
@@ -198,6 +199,27 @@ function SuperAdminDashboard() {
 
 function AdminDashboard() {
   const user = useAuthStore((s) => s.user);
+
+  const [matriculaLink, setMatriculaLink] = useState<string | null>(null);
+  const [matriculaError, setMatriculaError] = useState<string | null>(null);
+
+  const generateMatriculaMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ token: string }>("/api/matriculas/links/generate");
+      return res.data.token;
+    },
+    onSuccess: (token) => {
+      const link = `${window.location.origin}/matricula/${token}`;
+      setMatriculaLink(link);
+      setMatriculaError(null);
+    },
+    onError: (err: unknown) => {
+      const detail =
+        (err as any)?.response?.data?.detail ??
+        (err instanceof Error ? err.message : "Não foi possível gerar o link.");
+      setMatriculaError(String(detail));
+    },
+  });
 
   const { data: dojo } = useQuery({
     queryKey: ["dojo", "me"],
@@ -427,6 +449,67 @@ function AdminDashboard() {
             >
               Registrar check-in
             </Link>
+
+            <button
+              type="button"
+              disabled={generateMatriculaMutation.isPending}
+              onClick={() => generateMatriculaMutation.mutate()}
+              style={{
+                padding: tokens.space.sm,
+                backgroundColor: "white",
+                color: tokens.color.textPrimary,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                cursor: "pointer",
+                fontWeight: 800,
+                textAlign: "center",
+              }}
+            >
+              {generateMatriculaMutation.isPending ? "Gerando..." : "Gerar link de matrícula"}
+            </button>
+
+            {matriculaError && (
+              <div style={{ color: tokens.color.error, fontWeight: 900, fontSize: 12 }}>
+                {matriculaError}
+              </div>
+            )}
+
+            {matriculaLink && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  readOnly
+                  value={matriculaLink}
+                  style={{
+                    flex: "1 1 220px",
+                    padding: "10px 12px",
+                    borderRadius: tokens.radius.md,
+                    border: `1px solid ${tokens.color.borderSubtle}`,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(matriculaLink);
+                      alert("Link copiado para a área de transferência.");
+                    } catch {
+                      alert(matriculaLink);
+                    }
+                  }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: tokens.radius.md,
+                    border: `1px solid ${tokens.color.borderSubtle}`,
+                    backgroundColor: tokens.color.bgBody,
+                    color: tokens.color.textPrimary,
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Copiar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

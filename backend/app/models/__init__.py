@@ -15,4 +15,5 @@ from app.models.finance import (  # noqa: F401
     Plan,
     StudentSubscription,
 )
+from app.models.matricula_link import MatriculaLink  # noqa: F401
 

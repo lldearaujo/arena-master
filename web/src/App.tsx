@@ -18,6 +18,7 @@ import { SkillsPage } from "./features/skills/SkillsPage";
 import { AppShell } from "./ui/AppShell";
 import { PrivacyPolicyPage } from "./features/privacy/PrivacyPolicyPage";
 import { HomePage } from "./features/home/HomePage";
+import { MatriculaPage } from "./features/matriculas/MatriculaPage";
 
 type PrivateRouteProps = {
   children: JSX.Element;
@@ -180,6 +181,7 @@ export function App() {
           </PrivateRoute>
         }
       />
+      <Route path="/matricula/:token" element={<MatriculaPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

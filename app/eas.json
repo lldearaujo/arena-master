@@ -9,16 +9,19 @@
       "distribution": "internal"
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal"
     },
     "production": {
       "autoIncrement": true,
+      "distribution": "store",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://arenamasterbk.ideiasobria.online"
       }
     }
   },
   "submit": {
+    "preview": {},
     "production": {}
   }
 }

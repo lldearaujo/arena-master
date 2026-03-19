@@ -1,13 +1,20 @@
 import axios, { AxiosError } from "axios";
 import { useAuthStore } from "../store/auth";
 
-// URL base da API – em produção VITE_API_URL é injetada pelo build.
-// Fallback aponta para o domínio de produção com HTTPS para evitar Mixed Content.
+// URL base da API:
+// - Em DEV: por padrão usamos o backend local (uvicorn na :8000), sem forçar HTTPS.
+// - Em PROD: por padrão usamos o domínio de produção com HTTPS (evita Mixed Content).
 const rawBaseURL =
-  import.meta.env.VITE_API_URL || "https://arenamasterbk.ideiasobria.online";
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV
+    ? "http://localhost:8000"
+    : "https://arenamasterbk.ideiasobria.online");
 
-// Sempre garante HTTPS — corrige caso VITE_API_URL tenha sido configurada com http://
-const apiBaseURL = rawBaseURL.replace(/^http:\/\//i, "https://");
+// Em produção, garantimos HTTPS. Em dev, preservamos (geralmente é http://localhost).
+const apiBaseURL =
+  !import.meta.env.DEV && rawBaseURL.startsWith("http://")
+    ? rawBaseURL.replace(/^http:\/\//i, "https://")
+    : rawBaseURL;
 
 export const api = axios.create({
   baseURL: apiBaseURL,
