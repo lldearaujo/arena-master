@@ -34,6 +34,7 @@ type Payment = {
   dojo_id: number;
   student_id: number;
   subscription_id: number | null;
+  student_name?: string | null;
   amount: number;
   method: string;
   status: "pending_confirmation" | "confirmed" | "rejected";
@@ -650,7 +651,7 @@ export function FinancePage() {
                         marginBottom: 4,
                       }}
                     >
-                      <strong>Pagamento #{p.id}</strong> — R$ {p.amount.toFixed(2)}
+                      <strong>{p.student_name ?? "Aluno"}</strong> — Pagamento #{p.id} — R$ {p.amount.toFixed(2)}
                     </div>
                     <div
                       style={{

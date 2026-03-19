@@ -83,6 +83,7 @@ class PaymentRead(BaseModel):
     student_id: int
     subscription_id: int | None
     amount: float
+    student_name: str | None = None
     method: PaymentMethod
     status: PaymentStatus
     payment_date: datetime | None

@@ -415,22 +415,34 @@ async def list_payments_pending_confirmation(
 ) -> list[Payment]:
     # Lista apenas pagamentos pendentes ligados a assinaturas
     # que ainda não foram canceladas.
+    # Retorna Payment com o nome do aluno (para exibir na listagem de pendências).
     result = await session.execute(
-        select(Payment)
+        select(Payment, Student.name)
         .join(
             StudentSubscription,
             Payment.subscription_id == StudentSubscription.id,
         )
+        .join(Student, Payment.student_id == Student.id)
         .where(
             and_(
                 Payment.dojo_id == dojo_id,
                 Payment.status == PaymentStatus.PENDING_CONFIRMATION,
                 StudentSubscription.status != StudentSubscriptionStatus.CANCELED,
+                Student.dojo_id == dojo_id,
             )
         )
         .order_by(Payment.id.desc())
     )
-    return list(result.scalars().all())
+
+    payments: list[Payment] = []
+    for payment, student_name in result.all():
+        # A query retorna um campo extra que não existe no ORM Payment.
+        # Para reaproveitar PaymentRead.model_validate(), anexamos dinamicamente
+        # a propriedade student_name no objeto.
+        setattr(payment, "student_name", student_name)
+        payments.append(payment)
+
+    return payments
 
 
 async def confirm_payment(
