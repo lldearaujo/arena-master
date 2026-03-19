@@ -17,6 +17,7 @@ import { FinancePage } from "./features/finance/FinancePage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { AppShell } from "./ui/AppShell";
 import { PrivacyPolicyPage } from "./features/privacy/PrivacyPolicyPage";
+import { HomePage } from "./features/home/HomePage";
 
 type PrivateRouteProps = {
   children: JSX.Element;
@@ -32,6 +33,14 @@ function PrivateRoute({ children, allowedRoles }: PrivateRouteProps) {
     return <Navigate to="/login" replace />;
   }
   return <AppShell>{children}</AppShell>;
+}
+
+function HomeRoute() {
+  const user = useAuthStore((s) => s.user);
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <HomePage />;
 }
 
 export function App() {
@@ -72,6 +81,7 @@ export function App() {
 
   return (
     <Routes>
+      <Route path="/" element={<HomeRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
       <Route
@@ -170,7 +180,7 @@ export function App() {
           </PrivateRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

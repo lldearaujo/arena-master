@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import { useAuthStore, Role } from "../../store/auth";
 import { tokens } from "../../ui/tokens";
+import arenaMasterLogo from "../../assets/arena-master-logo.png";
 
 type LoginResponse = {
   access_token: string;
@@ -16,6 +17,19 @@ type LoginResponse = {
     role: Role;
     dojo_id: number | null;
   };
+};
+
+const inputBaseStyle: React.CSSProperties = {
+  width: "100%",
+  padding: `${tokens.space.md}px ${tokens.space.lg}px`,
+  fontSize: tokens.text.md,
+  borderRadius: tokens.radius.md,
+  border: `1px solid ${tokens.color.borderSubtle}`,
+  backgroundColor: "#fff",
+  color: tokens.color.textPrimary,
+  outline: "none",
+  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+  boxSizing: "border-box",
 };
 
 export function LoginPage() {
@@ -33,12 +47,12 @@ export function LoginPage() {
         password,
       });
 
-      const tokens = {
+      const authTokens = {
         accessToken: loginRes.data.access_token,
         refreshToken: loginRes.data.refresh_token,
       };
 
-      setSession(tokens, {
+      setSession(authTokens, {
         id: loginRes.data.user.id,
         email: loginRes.data.user.email,
         role: loginRes.data.user.role,
@@ -70,72 +84,175 @@ export function LoginPage() {
   return (
     <div
       style={{
-        maxWidth: 360,
-        margin: "80px auto",
-        fontFamily: "system-ui",
+        minHeight: "100vh",
+        backgroundColor: tokens.color.bgBody,
+        fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: tokens.space.xl,
+        boxSizing: "border-box",
       }}
     >
-      <h1 style={{ fontSize: tokens.text["2xl"], marginBottom: tokens.space.sm }}>
-        Arena Master
-      </h1>
-      <h2 style={{ fontSize: tokens.text.lg, marginBottom: tokens.space.lg }}>
-        Entrar no painel
-      </h2>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          <span>E-mail</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: tokens.space.sm,
-              marginTop: tokens.space.xs,
-              borderRadius: tokens.radius.md,
-              border: `1px solid ${tokens.color.borderSubtle}`,
-            }}
+      <Link
+        to="/"
+        style={{
+          position: "absolute",
+          top: tokens.space.xl,
+          left: tokens.space.xl,
+          color: tokens.color.textMuted,
+          fontSize: tokens.text.sm,
+          textDecoration: "none",
+        }}
+      >
+        ← Voltar ao site
+      </Link>
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 400,
+          backgroundColor: "#fff",
+          borderRadius: tokens.radius.lg,
+          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+          border: `1px solid ${tokens.color.borderSubtle}`,
+          padding: tokens.space.xl * 1.5,
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ textAlign: "center", marginBottom: tokens.space.xl }}>
+          <img
+            src={arenaMasterLogo}
+            alt="Arena Master"
+            style={{ height: 160, width: "auto", display: "block", margin: "0 auto" }}
           />
-        </label>
-        <label>
-          <span>Senha</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
+          <p
             style={{
-              width: "100%",
-              padding: tokens.space.sm,
-              marginTop: tokens.space.xs,
-              borderRadius: tokens.radius.md,
-              border: `1px solid ${tokens.color.borderSubtle}`,
+              fontSize: tokens.text.sm,
+              color: tokens.color.textMuted,
+              margin: 0,
+              marginTop: tokens.space.lg,
             }}
-          />
-        </label>
-        {error && (
-          <div style={{ color: tokens.color.error, fontSize: tokens.text.sm }}>
-            {error}
-          </div>
-        )}
-        <button
-          type="submit"
-          disabled={mutation.isPending}
+          >
+            Entrar no painel administrador
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
           style={{
-            padding: `${tokens.space.sm + 2}px ${tokens.space.lg}px`,
-            marginTop: tokens.space.sm,
-            backgroundColor: tokens.color.primary,
-            color: tokens.color.textOnPrimary,
-            borderRadius: tokens.radius.md,
-            border: "none",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            gap: tokens.space.lg,
           }}
         >
-          {mutation.isPending ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+          <label style={{ display: "block" }}>
+            <span
+              style={{
+                display: "block",
+                fontSize: tokens.text.sm,
+                fontWeight: 600,
+                color: tokens.color.textPrimary,
+                marginBottom: tokens.space.xs,
+              }}
+            >
+              E-mail
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="seu@email.com"
+              style={inputBaseStyle}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = tokens.color.primary;
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${tokens.color.primary}40`;
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = tokens.color.borderSubtle;
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            />
+          </label>
+
+          <label style={{ display: "block" }}>
+            <span
+              style={{
+                display: "block",
+                fontSize: tokens.text.sm,
+                fontWeight: 600,
+                color: tokens.color.textPrimary,
+                marginBottom: tokens.space.xs,
+              }}
+            >
+              Senha
+            </span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
+              style={inputBaseStyle}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = tokens.color.primary;
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${tokens.color.primary}40`;
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = tokens.color.borderSubtle;
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            />
+          </label>
+
+          {error && (
+            <div
+              style={{
+                padding: tokens.space.md,
+                fontSize: tokens.text.sm,
+                color: tokens.color.error,
+                backgroundColor: `${tokens.color.error}12`,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.color.error}30`,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={mutation.isPending}
+            style={{
+              marginTop: tokens.space.sm,
+              padding: `${tokens.space.md}px ${tokens.space.xl}px`,
+              fontSize: tokens.text.md,
+              fontWeight: 600,
+              color: tokens.color.textOnPrimary,
+              backgroundColor: tokens.color.primary,
+              border: "none",
+              borderRadius: tokens.radius.md,
+              cursor: mutation.isPending ? "not-allowed" : "pointer",
+              opacity: mutation.isPending ? 0.8 : 1,
+              transition: "background-color 0.2s ease, transform 0.1s ease",
+            }}
+            onMouseOver={(e) => {
+              if (!mutation.isPending) {
+                e.currentTarget.style.backgroundColor = tokens.color.primaryDark;
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = tokens.color.primary;
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+          >
+            {mutation.isPending ? "Entrando..." : "Entrar"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
-

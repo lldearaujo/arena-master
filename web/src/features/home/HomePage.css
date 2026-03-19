@@ -1,0 +1,270 @@
+/* Responsivo - smartphones e tablets */
+.home-page {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+}
+
+.home-page * {
+  box-sizing: border-box;
+}
+
+/* Container: menos padding no mobile */
+@media (max-width: 768px) {
+  .home-container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-container {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
+
+/* Navbar: desktop = logo + links na mesma linha; mobile = logo + hambúrguer, dropdown ao toque */
+.home-nav-toggle {
+  display: none;
+}
+
+.home-nav-dropdown {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .home-nav-toggle {
+    display: flex !important;
+  }
+
+  .home-nav-links {
+    display: none !important;
+  }
+
+  .home-nav-inner {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+  }
+
+  .home-nav-logo img {
+    height: 44px !important;
+  }
+
+  .home-nav-dropdown {
+    display: none;
+    padding: 0 16px 16px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+  }
+
+  .home-nav-open .home-nav-dropdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .home-nav-dropdown a {
+    display: block;
+    padding: 14px 0;
+    color: #111827;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .home-nav-dropdown a:last-child {
+    border-bottom: none;
+    margin-top: 8px;
+    padding: 12px 16px;
+    background: #B89E5D;
+    color: #fff;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-nav-inner {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .home-nav-dropdown {
+    padding: 0 12px 12px;
+  }
+}
+
+/* Hero: menos padding e ajustes de texto */
+@media (max-width: 768px) {
+  .home-hero {
+    padding-top: 48px !important;
+    padding-bottom: 48px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .home-hero-sub {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-hero {
+    padding-top: 32px !important;
+    padding-bottom: 40px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .home-hero-sub {
+    font-size: 15px !important;
+  }
+
+  .home-hero-logo {
+    margin-bottom: 20px !important;
+  }
+
+  .home-hero-logo img {
+    height: 80px !important;
+    max-height: 80px !important;
+  }
+}
+
+/* Trust badges: empilhar no mobile */
+@media (max-width: 600px) {
+  .home-trust-badges {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px !important;
+  }
+
+  .home-trust-badges span {
+    font-size: 12px !important;
+  }
+}
+
+/* Store badges (App Store / Google Play): empilhar no mobile */
+@media (max-width: 600px) {
+  .home-store-badges {
+    flex-direction: column;
+    gap: 12px !important;
+    margin-top: 24px !important;
+  }
+
+  .home-store-badges > span {
+    margin-right: 0 !important;
+  }
+
+  .home-store-badges a {
+    width: 100%;
+    max-width: 220px;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+}
+
+/* Seções: menos padding vertical no mobile */
+@media (max-width: 768px) {
+  .home-section {
+    padding-top: 56px !important;
+    padding-bottom: 56px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-section {
+    padding-top: 40px !important;
+    padding-bottom: 40px !important;
+  }
+}
+
+/* Features grid: 1 coluna no mobile */
+@media (max-width: 640px) {
+  .home-features-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+/* Card de preço: largura total no mobile */
+@media (max-width: 480px) {
+  .home-pricing-card {
+    max-width: 100% !important;
+    padding: 20px 16px !important;
+  }
+
+  .home-pricing-price {
+    font-size: 36px !important;
+  }
+}
+
+/* Depoimentos: 1 coluna no mobile */
+@media (max-width: 640px) {
+  .home-depoimentos-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+/* CTA section: menos padding */
+@media (max-width: 768px) {
+  .home-cta-section {
+    padding-top: 48px !important;
+    padding-bottom: 48px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-cta-section {
+    padding-top: 40px !important;
+    padding-bottom: 40px !important;
+  }
+
+  .home-cta-section h2 {
+    font-size: 20px !important;
+  }
+
+  .home-cta-section p {
+    font-size: 15px !important;
+  }
+}
+
+/* Footer: empilhar e centralizar no mobile */
+@media (max-width: 768px) {
+  .home-footer-inner {
+    flex-direction: column;
+    text-align: center;
+    gap: 16px !important;
+  }
+
+  .home-footer-links {
+    flex-direction: column;
+    gap: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-footer {
+    padding: 24px 16px !important;
+  }
+
+  .home-footer-inner {
+    gap: 20px !important;
+  }
+
+  .home-footer-links a,
+  .home-footer-links span {
+    font-size: 12px !important;
+  }
+
+  .home-footer-logo img {
+    height: 36px !important;
+  }
+}
