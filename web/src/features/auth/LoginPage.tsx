@@ -252,6 +252,47 @@ export function LoginPage() {
             {mutation.isPending ? "Entrando..." : "Entrar"}
           </button>
         </form>
+
+        <div
+          style={{
+            marginTop: tokens.space.xl,
+            borderTop: `1px solid ${tokens.color.borderSubtle}`,
+            paddingTop: tokens.space.lg,
+            textAlign: "center",
+          }}
+        >
+          <a
+            href="https://wa.me/558399468978"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: `${tokens.space.sm}px ${tokens.space.xl}px`,
+              borderRadius: tokens.radius.md,
+              border: `1px solid ${tokens.color.primary}`,
+              backgroundColor: "#fff",
+              color: tokens.color.primaryDark,
+              fontSize: tokens.text.sm,
+              fontWeight: 600,
+              textDecoration: "none",
+              cursor: "pointer",
+              transition: "background-color 0.15s ease, color 0.15s ease",
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = tokens.color.primary;
+              e.currentTarget.style.color = tokens.color.textOnPrimary;
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = "#fff";
+              e.currentTarget.style.color = tokens.color.primaryDark;
+            }}
+          >
+            Suporte
+          </a>
+        </div>
       </div>
     </div>
   );

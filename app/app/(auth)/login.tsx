@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Stack, useRouter } from "expo-router";
-import { View, Text, TextInput, Pressable, Image } from "react-native";
+import { View, Text, TextInput, Pressable, Image, Linking } from "react-native";
+import { HelpCircle } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
 
 import { api, persistSession } from "../../src/api/client";
@@ -90,93 +91,118 @@ export default function LoginScreen() {
           flex: 1,
           paddingHorizontal: tokens.space.xl,
           paddingTop: tokens.space.xl,
+          paddingBottom: tokens.space.xl,
         }}
       >
-        <Text
-          style={{
-            color: tokens.color.textOnPrimary,
-            fontSize: tokens.text.xl,
-            fontWeight: "900",
-            letterSpacing: 0.5,
-            marginBottom: tokens.space.lg,
-            textAlign: "center",
-          }}
-        >
-          BEM-VINDO
-        </Text>
-
-        <TextInput
-          placeholder="Telefone/Email"
-          placeholderTextColor="rgba(255,255,255,0.6)"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-          style={{
-            backgroundColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.3)",
-            borderRadius: tokens.radius.md,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            marginBottom: tokens.space.md,
-            fontSize: tokens.text.md,
-            color: tokens.color.textOnPrimary,
-          }}
-        />
-
-        <TextInput
-          placeholder="Senha"
-          placeholderTextColor="rgba(255,255,255,0.6)"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          style={{
-            backgroundColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.3)",
-            borderRadius: tokens.radius.md,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            marginBottom: tokens.space.sm,
-            fontSize: tokens.text.md,
-            color: tokens.color.textOnPrimary,
-          }}
-        />
-
-        {error && (
-          <Text
-            style={{
-              color: tokens.color.error,
-              fontSize: tokens.text.sm,
-              marginBottom: tokens.space.sm,
-            }}
-          >
-            {error}
-          </Text>
-        )}
-
-        <Pressable
-          onPress={() => mutation.mutate()}
-          style={{
-            backgroundColor: tokens.color.primary,
-            paddingVertical: 14,
-            borderRadius: tokens.radius.lg,
-            alignItems: "center",
-            marginTop: tokens.space.md,
-          }}
-        >
+        <View>
           <Text
             style={{
               color: tokens.color.textOnPrimary,
-              fontWeight: "700",
-              fontSize: tokens.text.md,
+              fontSize: tokens.text.xl,
+              fontWeight: "900",
+              letterSpacing: 0.5,
+              marginBottom: tokens.space.lg,
+              textAlign: "center",
             }}
           >
-            {mutation.isPending ? "Entrando..." : "Entrar"}
+            BEM-VINDO
           </Text>
-        </Pressable>
 
+          <TextInput
+            placeholder="Telefone/Email"
+            placeholderTextColor="rgba(255,255,255,0.6)"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            style={{
+              backgroundColor: "rgba(255,255,255,0.08)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.3)",
+              borderRadius: tokens.radius.md,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              marginBottom: tokens.space.md,
+              fontSize: tokens.text.md,
+              color: tokens.color.textOnPrimary,
+            }}
+          />
+
+          <TextInput
+            placeholder="Senha"
+            placeholderTextColor="rgba(255,255,255,0.6)"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            style={{
+              backgroundColor: "rgba(255,255,255,0.08)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.3)",
+              borderRadius: tokens.radius.md,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              marginBottom: tokens.space.sm,
+              fontSize: tokens.text.md,
+              color: tokens.color.textOnPrimary,
+            }}
+          />
+
+          {error && (
+            <Text
+              style={{
+                color: tokens.color.error,
+                fontSize: tokens.text.sm,
+                marginBottom: tokens.space.sm,
+              }}
+            >
+              {error}
+            </Text>
+          )}
+
+          <Pressable
+            onPress={() => mutation.mutate()}
+            style={{
+              backgroundColor: tokens.color.primary,
+              paddingVertical: 14,
+              borderRadius: tokens.radius.lg,
+              alignItems: "center",
+              marginTop: tokens.space.md,
+            }}
+          >
+            <Text
+              style={{
+                color: tokens.color.textOnPrimary,
+                fontWeight: "700",
+                fontSize: tokens.text.md,
+              }}
+            >
+              {mutation.isPending ? "Entrando..." : "Entrar"}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Pressable
+          onPress={() => {
+            Linking.openURL("https://wa.me/5583994068978");
+          }}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            borderWidth: 1.5,
+            borderColor: tokens.color.primary,
+            alignItems: "center",
+            justifyContent: "center",
+            alignSelf: "center",
+            marginTop: "25%",
+          }}
+        >
+          <HelpCircle
+            size={26}
+            color={tokens.color.primary}
+            strokeWidth={2.4}
+          />
+        </Pressable>
       </View>
     </View>
   );

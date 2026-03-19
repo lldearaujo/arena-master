@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
 import { useAuthStore } from "../store/auth";
@@ -49,28 +50,42 @@ api.interceptors.request.use((config) => {
 });
 
 const SESSION_KEY = "arena-master-session";
+const SESSION_KEY_ASYNC = "arena-master-session-async";
 
 async function setItem(key: string, value: string) {
   if (Platform.OS === "web") {
     window.localStorage.setItem(key, value);
-  } else {
-    await SecureStore.setItemAsync(key, value);
+    return;
   }
+  try {
+    await SecureStore.setItemAsync(key, value);
+  } catch {
+    // SecureStore pode falhar (ex.: limite ~2KB no iOS); grava no AsyncStorage
+  }
+  await AsyncStorage.setItem(SESSION_KEY_ASYNC, value);
 }
 
 async function getItem(key: string): Promise<string | null> {
   if (Platform.OS === "web") {
     return window.localStorage.getItem(key);
   }
-  return SecureStore.getItemAsync(key);
+  let raw = await SecureStore.getItemAsync(key);
+  if (raw) return raw;
+  raw = await AsyncStorage.getItem(SESSION_KEY_ASYNC);
+  return raw;
 }
 
 async function deleteItem(key: string) {
   if (Platform.OS === "web") {
     window.localStorage.removeItem(key);
-  } else {
-    await SecureStore.deleteItemAsync(key);
+    return;
   }
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    // ignora
+  }
+  await AsyncStorage.removeItem(SESSION_KEY_ASYNC);
 }
 
 export async function persistSession() {

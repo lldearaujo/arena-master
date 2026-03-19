@@ -370,7 +370,7 @@ async def list_checkins(
     session: AsyncSession,
     dojo_id: int,
     filters: CheckInFilter,
-) -> list[tuple[CheckIn, str | None, int | None]]:
+) -> list[tuple[CheckIn, str | None, int | None, str | None]]:
     from app.models.student import Student
 
     # Subconsulta com o "score" de cada aluno:
@@ -391,8 +391,9 @@ async def list_checkins(
     )
 
     query = (
-        select(CheckIn, Student.name, score_subq.c.score)
+        select(CheckIn, Student.name, score_subq.c.score, Turma.name)
         .join(Student, Student.id == CheckIn.student_id)
+        .join(Turma, Turma.id == CheckIn.turma_id)
         .outerjoin(score_subq, score_subq.c.s_id == CheckIn.student_id)
         .where(CheckIn.dojo_id == dojo_id)
         .order_by(CheckIn.occurred_at.desc())
@@ -403,6 +404,10 @@ async def list_checkins(
         conditions.append(CheckIn.turma_id == filters.turma_id)
     if filters.student_id is not None:
         conditions.append(CheckIn.student_id == filters.student_id)
+    if filters.student_name is not None and filters.student_name.strip():
+        conditions.append(
+            func.lower(Student.name).like(f"%{filters.student_name.strip().lower()}%")
+        )
     if filters.start_date is not None:
         conditions.append(
             func.date(CheckIn.occurred_at) >= filters.start_date

@@ -13,6 +13,7 @@ class CheckInRead(BaseModel):
     id: int
     dojo_id: int
     turma_id: int
+    turma_name: str | None = None
     student_id: int
     student_name: str | None = None
     # Total de presenças confirmadas do aluno (score acumulado)
@@ -31,6 +32,7 @@ class CheckInRead(BaseModel):
 class CheckInFilter(BaseModel):
     turma_id: int | None = None
     student_id: int | None = None
+    student_name: str | None = None
     start_date: date | None = None
     end_date: date | None = None
 

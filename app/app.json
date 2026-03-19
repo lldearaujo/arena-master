@@ -5,12 +5,14 @@
     "scheme": "arena-master",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/arena-master-app.png",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#020617"
+        "foregroundImage": "./assets/arena-master-app.png",
+        "backgroundColor": "#C5A85B"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"

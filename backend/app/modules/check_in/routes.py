@@ -143,6 +143,7 @@ async def list_checkins(
     session: SessionDep,
     turma_id: int | None = Query(default=None),
     student_id: int | None = Query(default=None),
+    student_name: str | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> list[schemas.CheckInRead]:
@@ -157,17 +158,19 @@ async def list_checkins(
     filters = schemas.CheckInFilter(
         turma_id=turma_id,
         student_id=student_id,
+        student_name=student_name,
         start_date=_parse(start_date),
         end_date=_parse(end_date),
     )
     rows = await service.list_checkins(session, admin.dojo_id, filters)
     response: list[schemas.CheckInRead] = []
-    for checkin, student_name, score in rows:
+    for checkin, student_name, score, turma_name in rows:
         base = schemas.CheckInRead.model_validate(checkin)
         enriched = base.model_copy(
             update={
                 "student_name": student_name,
                 "score": score,
+                "turma_name": turma_name,
             }
         )
         response.append(enriched)
