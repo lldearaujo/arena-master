@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,19 @@ from app.modules.check_in.schemas import CheckInCreate, CheckInFilter
 from app.modules.finance.service import consume_credit_for_checkin, refund_credit_for_checkin
 
 
+#
+# IMPORTANTE:
+# Não podemos depender de tzdata/zoneinfo no ambiente.
+# Usamos fuso fixo do Brasil (UTC-3) para alinhar dia/horário com o esperado.
+#
+BRAZIL_OFFSET = timedelta(hours=-3)
+
+
+def _now_brazil() -> datetime:
+    """Agora no fuso fixo do Brasil (UTC-3)."""
+    return datetime.now(UTC) + BRAZIL_OFFSET
+
+
 def _checkins_query(dojo_id: int) -> Select[tuple[CheckIn]]:
     return select(CheckIn).where(CheckIn.dojo_id == dojo_id).order_by(
         CheckIn.occurred_at.desc()
@@ -20,9 +33,9 @@ def _checkins_query(dojo_id: int) -> Select[tuple[CheckIn]]:
 
 
 def _day_abbrev_now() -> str:
-    """Abreviação do dia atual (seg, ter, ...) em horário local."""
+    """Abreviação do dia atual (seg, ter, ...) no fuso do Brasil."""
     abbrevs = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
-    return abbrevs[datetime.now().weekday()]
+    return abbrevs[_now_brazil().weekday()]
 
 
 def _check_checkin_allowed_until_start(turma: Turma) -> None:
@@ -30,7 +43,8 @@ def _check_checkin_allowed_until_start(turma: Turma) -> None:
     Verifica se ainda é possível fazer check-in: apenas no dia da turma
     e até o horário de início (inclusive). Após o início, bloqueia.
     """
-    now_local = datetime.now()
+    # Importante: validações de dia/horário devem usar o fuso esperado do dojo.
+    now_local = _now_brazil()
     today_abbrev = _day_abbrev_now()
     turma_days = [d.strip() for d in turma.day_of_week.split(",")]
     if today_abbrev not in turma_days:

@@ -1,6 +1,5 @@
 from typing import Iterable
-from datetime import datetime
-from datetime import UTC, date
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +11,18 @@ from app.models.turma import Turma
 from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
 from app.modules.turmas.schemas import EnrollmentRequest, TurmaCreate, TurmaUpdate
+#
+# IMPORTANTE:
+# Não podemos depender de tzdata/zoneinfo no ambiente.
+# Usamos fuso fixo do Brasil (UTC-3) para alinhar dia/horário com o esperado.
+#
+BRAZIL_OFFSET = timedelta(hours=-3)
+
+
+def _now_brazil() -> datetime:
+    """Agora no fuso fixo do Brasil (UTC-3)."""
+    return datetime.now(UTC) + BRAZIL_OFFSET
+
 
 
 def _turmas_query(dojo_id: int) -> Select[tuple[Turma]]:
@@ -166,9 +177,9 @@ async def unenroll_student(
 
 def _today_day_abbrev() -> str:
     """Retorna abreviação do dia atual: seg, ter, qua, qui, sex, sab, dom.
-    Usa data local do servidor para coincidir com o dia do usuário (ex.: Brasil)."""
+    Usa o fuso do Brasil para coincidir com o dia do usuário (ex.: Brasil)."""
     abbrevs = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
-    return abbrevs[datetime.now().weekday()]
+    return abbrevs[_now_brazil().weekday()]
 
 
 async def turmas_for_student(
