@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 
 import { api } from "../../api/client";
 import { tokens } from "../../ui/tokens";
@@ -426,13 +427,25 @@ type StudentPasswordResetResponse = {
 
 export function StudentsPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, isFetching, error } = useQuery({
     queryKey: ["students"],
     queryFn: async () => {
       const res = await api.get<Student[]>("/api/students");
       return res.data;
     },
   });
+  const studentsLoadError =
+    error instanceof Error ? error.message : error ? String(error) : null;
+  const studentsDetail =
+    error && typeof error === "object" && "isAxiosError" in error
+      ? (() => {
+          const ax = error as AxiosError<{ detail?: unknown }>;
+          const d = ax.response?.data?.detail;
+          if (typeof d === "string") return d;
+          if (d != null) return JSON.stringify(d);
+          return ax.response?.status ? `HTTP ${ax.response.status}` : null;
+        })()
+      : null;
 
   const { data: faixas } = useQuery({
     queryKey: ["faixas"],
@@ -996,8 +1009,14 @@ export function StudentsPage() {
                 </button>
               </div>
 
-              {isLoading && <p style={{ marginTop: 12, color: tokens.color.textMuted }}>Carregando...</p>}
-              {error && <p style={{ marginTop: 12, color: tokens.color.error, fontWeight: 700 }}>Erro ao carregar alunos.</p>}
+              {(isPending || isFetching) && !data && (
+                <p style={{ marginTop: 12, color: tokens.color.textMuted }}>Carregando...</p>
+              )}
+              {error && (
+                <p style={{ marginTop: 12, color: tokens.color.error, fontWeight: 700 }}>
+                  Erro ao carregar alunos.{studentsDetail ? ` ${studentsDetail}` : studentsLoadError ? ` ${studentsLoadError}` : ""}
+                </p>
+              )}
 
               {data && (
                 <div style={{ marginTop: tokens.space.md }}>

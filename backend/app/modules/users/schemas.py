@@ -9,6 +9,7 @@ class UserMeRead(BaseModel):
     dojo_id: int | None
     avatar_url: str | None = None
     graduacao: str | None = None
+    fcm_token: str | None = None
 
     class Config:
         from_attributes = True
@@ -17,6 +18,7 @@ class UserMeRead(BaseModel):
 class AvatarUpdate(BaseModel):
     avatar_url: str | None = None
     name: str | None = None
+    fcm_token: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):

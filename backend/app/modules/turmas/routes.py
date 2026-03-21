@@ -78,6 +78,16 @@ async def list_turmas(
     return [schemas.TurmaRead.model_validate(t) for t in turmas]
 
 
+@router.get("/modalidades", response_model=list[str])
+async def list_modalidades(
+    admin: AdminDep,
+    session: SessionDep,
+) -> list[str]:
+    if admin.dojo_id is None:
+        return []
+    return await service.list_modalidades_for_dojo(session, admin.dojo_id)
+
+
 @router.post(
     "/",
     response_model=schemas.TurmaRead,

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.check_in import CheckIn
 from app.models.student import Student
 from app.models.student_guardian import StudentGuardian
+from app.models.dojo_modalidade import DojoModalidade
 from app.models.turma import Turma
 from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
@@ -34,6 +35,60 @@ async def list_turmas(session: AsyncSession, dojo_id: int) -> list[Turma]:
     return list(result.scalars().all())
 
 
+async def list_modalidades_for_dojo(session: AsyncSession, dojo_id: int) -> list[str]:
+    """Modalidades: catálogo do dojo + valores já usados em alunos/turmas."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    catalog = await session.execute(
+        select(DojoModalidade.name)
+        .where(DojoModalidade.dojo_id == dojo_id)
+        .order_by(DojoModalidade.name)
+    )
+    for row in catalog.all():
+        m = (row[0] or "").strip()
+        if m and m not in seen:
+            seen.add(m)
+            ordered.append(m)
+
+    student_rows = await session.execute(
+        select(Student.modalidade)
+        .where(
+            and_(
+                Student.dojo_id == dojo_id,
+                Student.modalidade.is_not(None),
+            )
+        )
+        .distinct()
+        .order_by(Student.modalidade)
+    )
+    for row in student_rows.all():
+        m = (row[0] or "").strip()
+        if m and m not in seen:
+            seen.add(m)
+            ordered.append(m)
+
+    turma_rows = await session.execute(
+        select(Turma.modalidade)
+        .where(
+            and_(
+                Turma.dojo_id == dojo_id,
+                Turma.modalidade.is_not(None),
+            )
+        )
+        .distinct()
+        .order_by(Turma.modalidade)
+    )
+    for row in turma_rows.all():
+        m = (row[0] or "").strip()
+        if m and m not in seen:
+            seen.add(m)
+            ordered.append(m)
+
+    ordered.sort(key=lambda x: x.casefold())
+    return ordered
+
+
 async def get_turma(
     session: AsyncSession,
     dojo_id: int,
@@ -54,6 +109,7 @@ async def create_turma(
         dojo_id=dojo_id,
         name=data.name,
         description=data.description,
+        modalidade=data.modalidade,
         day_of_week=data.day_of_week,
         start_time=data.start_time,
         end_time=data.end_time,

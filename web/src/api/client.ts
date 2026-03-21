@@ -20,6 +20,22 @@ export const api = axios.create({
   baseURL: apiBaseURL,
 });
 
+/**
+ * FastAPI/Starlette redireciona `/api/foo` → `/api/foo/`. Em CORS, o 307 do redirect
+ * costuma vir sem `Access-Control-Allow-Origin`, e o browser bloqueia a resposta.
+ * Forçamos a barra final só em paths do tipo `/api/<um segmento>` (lista/coleção).
+ */
+function withTrailingSlashAvoidRedirect(url: string | undefined): string | undefined {
+  if (!url) return url;
+  const qIdx = url.indexOf("?");
+  const path = qIdx >= 0 ? url.slice(0, qIdx) : url;
+  const query = qIdx >= 0 ? url.slice(qIdx) : "";
+  if (/^\/api\/[a-z0-9-]+$/i.test(path)) {
+    return `${path}/${query}`;
+  }
+  return url;
+}
+
 type TokenPairResponse = {
   access_token: string;
   refresh_token: string;
@@ -50,6 +66,9 @@ function processQueue(error: AxiosError | null, newAccessToken: string | null = 
 }
 
 api.interceptors.request.use((config) => {
+  if (config.url) {
+    config.url = withTrailingSlashAvoidRedirect(config.url) ?? config.url;
+  }
   const tokens = useAuthStore.getState().tokens;
   if (tokens?.accessToken) {
     config.headers = {

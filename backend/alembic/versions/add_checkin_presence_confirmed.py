@@ -19,28 +19,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "check_ins",
-        sa.Column("presence_confirmed_at", sa.DateTime(timezone=True), nullable=True),
+    # Idempotente: ambientes em que a coluna já existia sem revision no Alembic.
+    op.execute(
+        sa.text(
+            "ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS "
+            "presence_confirmed_at TIMESTAMP WITH TIME ZONE"
+        )
     )
-    op.add_column(
-        "check_ins",
-        sa.Column(
-            "presence_confirmed_by_user_id",
-            sa.Integer(),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+    op.execute(
+        sa.text(
+            "ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS "
+            "presence_confirmed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"
+        )
     )
-    op.create_index(
-        "ix_check_ins_presence_confirmed_at",
-        "check_ins",
-        ["presence_confirmed_at"],
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_check_ins_presence_confirmed_at "
+            "ON check_ins (presence_confirmed_at)"
+        )
     )
-    op.create_index(
-        "ix_check_ins_presence_confirmed_by_user_id",
-        "check_ins",
-        ["presence_confirmed_by_user_id"],
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_check_ins_presence_confirmed_by_user_id "
+            "ON check_ins (presence_confirmed_by_user_id)"
+        )
     )
 
 

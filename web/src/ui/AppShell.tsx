@@ -164,6 +164,54 @@ export function AppShell({ children }: AppShellProps) {
           >
             Dashboard
           </Link>
+          {(user?.role === "aluno" || user?.role === "admin" || user?.role === "superadmin") && (
+            <Link
+              to="/competicoes"
+              style={{
+                ...navLinkStyle,
+                backgroundColor: isActivePath(location.pathname, "/competicoes")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent",
+                borderLeft: isActivePath(location.pathname, "/competicoes")
+                  ? `3px solid ${tokens.color.primary}`
+                  : "3px solid transparent",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = isActivePath(location.pathname, "/competicoes")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent";
+              }}
+            >
+              Competições
+            </Link>
+          )}
+          {user?.role === "aluno" && (
+            <Link
+              to="/configuracoes"
+              style={{
+                ...navLinkStyle,
+                backgroundColor: isActivePath(location.pathname, "/configuracoes")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent",
+                borderLeft: isActivePath(location.pathname, "/configuracoes")
+                  ? `3px solid ${tokens.color.primary}`
+                  : "3px solid transparent",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = isActivePath(location.pathname, "/configuracoes")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent";
+              }}
+            >
+              Configurações
+            </Link>
+          )}
           {user?.role === "superadmin" && (
             <>
               <Link

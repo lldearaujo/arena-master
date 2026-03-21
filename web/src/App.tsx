@@ -19,6 +19,12 @@ import { AppShell } from "./ui/AppShell";
 import { PrivacyPolicyPage } from "./features/privacy/PrivacyPolicyPage";
 import { HomePage } from "./features/home/HomePage";
 import { MatriculaPage } from "./features/matriculas/MatriculaPage";
+import { CompetitionsListPage } from "./features/competitions/CompetitionsListPage";
+import { CompetitionManagePage } from "./features/competitions/CompetitionManagePage";
+import { CompetitionEnrollPage } from "./features/competitions/CompetitionEnrollPage";
+import { PublicCompetitionEnrollPage } from "./features/competitions/PublicCompetitionEnrollPage";
+import { ScorekeeperPage } from "./features/competitions/ScorekeeperPage";
+import { PublicMatsPage } from "./features/competitions/PublicMatsPage";
 
 type PrivateRouteProps = {
   children: JSX.Element;
@@ -85,6 +91,8 @@ export function App() {
       <Route path="/" element={<HomeRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
+      <Route path="/competicao-ao-vivo/:token" element={<PublicMatsPage />} />
+      <Route path="/competicao/inscricao/:id" element={<PublicCompetitionEnrollPage />} />
       <Route
         path="/dashboard"
         element={
@@ -160,8 +168,40 @@ export function App() {
       <Route
         path="/configuracoes"
         element={
-          <PrivateRoute allowedRoles={["admin"]}>
+          <PrivateRoute allowedRoles={["admin", "aluno"]}>
             <SettingsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competicoes"
+        element={
+          <PrivateRoute allowedRoles={["admin", "aluno", "superadmin"]}>
+            <CompetitionsListPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competicoes/gerir/:id"
+        element={
+          <PrivateRoute allowedRoles={["admin", "superadmin"]}>
+            <CompetitionManagePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competicoes/inscricao/:id"
+        element={
+          <PrivateRoute allowedRoles={["aluno"]}>
+            <CompetitionEnrollPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competicoes/:cid/mesa/:mid"
+        element={
+          <PrivateRoute allowedRoles={["admin", "superadmin"]}>
+            <ScorekeeperPage />
           </PrivateRoute>
         }
       />

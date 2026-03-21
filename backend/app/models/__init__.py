@@ -16,4 +16,16 @@ from app.models.finance import (  # noqa: F401
     StudentSubscription,
 )
 from app.models.matricula_link import MatriculaLink  # noqa: F401
+from app.models.competition import (  # noqa: F401
+    Competition,
+    CompetitionAgeDivision,
+    CompetitionBeltEligibility,
+    CompetitionBracket,
+    CompetitionMat,
+    CompetitionMatch,
+    CompetitionRegistration,
+    CompetitionWeightClass,
+    NotificationOutbox,
+)
+from app.models.dojo_modalidade import DojoModalidade  # noqa: F401
 

@@ -19,6 +19,8 @@ from app.modules.mural.routes import router as mural_router
 from app.modules.finance.routes import router as finance_router
 from app.modules.skills.routes import router as skills_router
 from app.modules.matriculas.routes import router as matriculas_router
+from app.modules.modalidades.routes import router as modalidades_router
+from app.modules.competitions.routes import router as competitions_router
 
 
 def create_app() -> FastAPI:
@@ -65,6 +67,8 @@ def create_app() -> FastAPI:
     app.include_router(finance_router, prefix="/api/finance", tags=["finance"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
     app.include_router(matriculas_router, prefix="/api/matriculas", tags=["matriculas"])
+    app.include_router(competitions_router, prefix="/api/competitions", tags=["competitions"])
+    app.include_router(modalidades_router, prefix="/api/modalidades", tags=["modalidades"])
 
     # Diretório de arquivos estáticos (inclui comprovantes em static/receipts e logos de dojos)
     # Usamos o diretório "static" dentro de backend/, compartilhado entre os módulos Python.

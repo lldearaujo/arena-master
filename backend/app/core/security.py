@@ -98,6 +98,30 @@ async def get_current_user(
     return user
 
 
+async def get_user_from_access_token(session: AsyncSession, token: str) -> User | None:
+    """Valida JWT de acesso (ex.: query string em WebSocket)."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+        token_data = TokenData(**payload)
+        if token_data.type != "access":
+            return None
+    except (JWTError, ValueError):
+        return None
+
+    result = await session.execute(
+        select(User).where(User.id == int(token_data.sub))
+    )
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
 async def get_current_admin(
     user: Annotated[User, Depends(get_current_user)],
 ) -> User:
@@ -116,6 +140,17 @@ async def require_superadmin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso restrito ao SuperAdmin",
+        )
+    return user
+
+
+async def get_current_aluno(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    if user.role != "aluno" or user.dojo_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso restrito a alunos",
         )
     return user
 

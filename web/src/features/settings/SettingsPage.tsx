@@ -13,6 +13,7 @@ type UserMe = {
   dojo_id: number | null;
   avatar_url: string | null;
   graduacao?: string | null;
+  fcm_token?: string | null;
 };
 
 type Dojo = {
@@ -32,6 +33,7 @@ export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [nameValue, setNameValue] = useState<string>("");
+  const [fcmValue, setFcmValue] = useState<string>("");
 
   const { data: user } = useQuery({
     queryKey: ["user-me"],
@@ -47,6 +49,7 @@ export function SettingsPage() {
       const res = await api.get<Dojo>("/api/dojos/me");
       return res.data;
     },
+    enabled: user?.role === "admin",
   });
 
   const uploadMutation = useMutation({
@@ -76,7 +79,7 @@ export function SettingsPage() {
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: async (payload: { name?: string; avatar_url?: string | null }) => {
+    mutationFn: async (payload: { name?: string; avatar_url?: string | null; fcm_token?: string | null }) => {
       const res = await api.patch<UserMe>("/api/users/me", payload);
       return res.data;
     },
@@ -115,6 +118,10 @@ export function SettingsPage() {
   useEffect(() => {
     if (user?.name !== undefined) setNameValue(user.name ?? "");
   }, [user?.name]);
+
+  useEffect(() => {
+    if (user?.fcm_token !== undefined) setFcmValue(user.fcm_token ?? "");
+  }, [user?.fcm_token]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -178,10 +185,10 @@ export function SettingsPage() {
         Configurações
       </h1>
 
-      {/* Dados do Professor */}
+      {/* Dados do utilizador */}
       <section style={{ ...cardStyle, marginBottom: tokens.space.xl }}>
         <h2 style={{ fontSize: tokens.text.lg, marginBottom: tokens.space.lg, fontWeight: 600 }}>
-          Dados do Professor
+          {user?.role === "aluno" ? "Minha conta" : "Dados do Professor"}
         </h2>
         {user ? (
           <>
@@ -317,6 +324,40 @@ export function SettingsPage() {
         )}
       </section>
 
+      {(user?.role === "aluno" || user?.role === "admin") && (
+        <section style={{ ...cardStyle, marginBottom: tokens.space.xl }}>
+          <h2 style={{ fontSize: tokens.text.lg, marginBottom: tokens.space.lg, fontWeight: 600 }}>
+            Notificações push (FCM)
+          </h2>
+          <p style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted, marginBottom: tokens.space.md }}>
+            Cole o token do dispositivo (Expo / Firebase) para receber avisos de competição no telemóvel.
+          </p>
+          <textarea
+            value={fcmValue}
+            onChange={(e) => setFcmValue(e.target.value)}
+            placeholder="Token FCM…"
+            rows={3}
+            style={{
+              width: "100%",
+              padding: tokens.space.md,
+              borderRadius: tokens.radius.md,
+              border: `1px solid ${tokens.color.borderSubtle}`,
+              fontSize: tokens.text.sm,
+              fontFamily: "monospace",
+            }}
+          />
+          <button
+            type="button"
+            style={{ ...btnPrimary, marginTop: tokens.space.md }}
+            onClick={() => updateUserMutation.mutate({ fcm_token: fcmValue.trim() || null })}
+            disabled={updateUserMutation.isPending}
+          >
+            Guardar token
+          </button>
+        </section>
+      )}
+
+      {user?.role === "admin" && (
       <section style={{ ...cardStyle, marginBottom: tokens.space.xl }}>
         <h2 style={{ fontSize: tokens.text.lg, marginBottom: tokens.space.lg, fontWeight: 600 }}>
           Logo do Dojo
@@ -404,6 +445,7 @@ export function SettingsPage() {
           </>
         )}
       </section>
+      )}
     </div>
   );
 }

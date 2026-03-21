@@ -292,20 +292,15 @@ async def get_student_for_user(
     session: AsyncSession,
     user: User,
 ) -> Student | None:
-    if user.role != "aluno" or user.dojo_id is None:
+    if user.role != "aluno":
         return None
-    # 1) Busca por user_id (vínculo direto)
-    result = await session.execute(
-        select(Student).where(
-            and_(
-                Student.user_id == user.id,
-                Student.dojo_id == user.dojo_id,
-            )
-        )
-    )
+    # 1) Vínculo direto (inclui atletas só de inscrição pública, sem dojo_id no User)
+    result = await session.execute(select(Student).where(Student.user_id == user.id))
     student = result.scalar_one_or_none()
     if student is not None:
         return student
+    if user.dojo_id is None:
+        return None
     # 2) Fallback: busca por email no mesmo dojo
     result = await session.execute(
         select(Student).where(
@@ -353,10 +348,25 @@ async def get_graduacao_display(
     student: Student,
 ) -> str | None:
     if student.faixa_id is None:
+        if student.external_faixa_label:
+            return student.external_faixa_label.strip()
         return None
     result = await session.execute(
         select(Faixa).where(Faixa.id == student.faixa_id)
     )
     faixa = result.scalar_one_or_none()
+    return _format_graduacao(faixa, student.grau)
+
+
+def graduacao_display_with_faixa_map(
+    student: Student,
+    faixa_by_id: dict[int, Faixa],
+) -> str | None:
+    """Versão síncrona para listagens em massa (evita N+1 queries por aluno)."""
+    if student.faixa_id is None:
+        if student.external_faixa_label:
+            return student.external_faixa_label.strip()
+        return None
+    faixa = faixa_by_id.get(student.faixa_id)
     return _format_graduacao(faixa, student.grau)
 

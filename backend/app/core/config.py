@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # usamos uma lista simples de strings e um valor padrão vazio.
     cors_origins: list[str] = Field(default_factory=list, alias="CORS_ORIGINS")
 
+    # Opcional: chave servidor FCM (legada) para push ao app. Sem isso, notificações ficam só no banco.
+    fcm_server_key: str | None = Field(None, alias="FCM_SERVER_KEY")
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, v):

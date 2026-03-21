@@ -1,11 +1,12 @@
 from datetime import time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class TurmaBase(BaseModel):
     name: str
     description: str | None = None
+    modalidade: str | None = None
     day_of_week: str
     start_time: time
     end_time: time
@@ -15,18 +16,35 @@ class TurmaBase(BaseModel):
 
 
 class TurmaCreate(TurmaBase):
-    pass
+    modalidade: str = Field(min_length=1, max_length=64)
+
+    @field_validator("modalidade")
+    @classmethod
+    def strip_modalidade(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Modalidade não pode ser vazia")
+        return s
 
 
 class TurmaUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    modalidade: str | None = None
     day_of_week: str | None = None
     start_time: time | None = None
     end_time: time | None = None
     capacity: int | None = None
     active: bool | None = None
     tipo: str | None = None
+
+    @field_validator("modalidade")
+    @classmethod
+    def strip_modalidade_update(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s if s else None
 
 
 class TurmaRead(TurmaBase):

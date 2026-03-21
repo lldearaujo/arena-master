@@ -33,11 +33,16 @@ class StudentUpdate(BaseModel):
 
 class StudentRead(StudentBase):
     id: int
-    dojo_id: int
+    dojo_id: int | None = None
+    external_dojo_name: str | None = None
+    external_faixa_label: str | None = None
     user_id: int | None = None
     faixa_id: int | None = None
     grau: int = 0
     graduacao: str | None = None  # preenchido na rota (não vem do ORM)
+    # Sobrescreve StudentBase.email: EmailStr rejeita domínios como `.local` (seeds / imports).
+    # Na leitura, o valor vem do banco e precisa ser serializado sem falhar.
+    email: str | None = None
 
     class Config:
         from_attributes = True

@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import get_session
 from app.core.security import get_current_admin, get_current_user
+from app.models.faixa import Faixa
 from app.models.student import Student
 from app.models.user import User
 from app.modules.students import schemas, service
@@ -26,6 +27,8 @@ async def _student_to_read(
     return schemas.StudentRead(
         id=student.id,
         dojo_id=student.dojo_id,
+        external_dojo_name=student.external_dojo_name,
+        external_faixa_label=student.external_faixa_label,
         user_id=student.user_id,
         name=student.name,
         email=student.email,
@@ -58,11 +61,34 @@ async def list_students(
             login_by_user_id[user_id] = email
             active_by_user_id[user_id] = bool(is_active)
 
+    # Faixas em lote (evita N+1 em get_graduacao_display por aluno)
+    faixa_ids = {s.faixa_id for s in students if s.faixa_id is not None}
+    faixa_by_id: dict[int, Faixa] = {}
+    if faixa_ids:
+        r_fx = await session.execute(select(Faixa).where(Faixa.id.in_(faixa_ids)))
+        faixa_by_id = {f.id: f for f in r_fx.scalars().all()}
+
     items: list[schemas.StudentWithLoginRead] = []
     for s in students:
         login_email = login_by_user_id.get(s.user_id) if s.user_id is not None else None
         is_active = active_by_user_id.get(s.user_id, True) if s.user_id is not None else True
-        base = await _student_to_read(session, s)
+        graduacao = service.graduacao_display_with_faixa_map(s, faixa_by_id)
+        base = schemas.StudentRead(
+            id=s.id,
+            dojo_id=s.dojo_id,
+            external_dojo_name=s.external_dojo_name,
+            external_faixa_label=s.external_faixa_label,
+            user_id=s.user_id,
+            name=s.name,
+            email=s.email,
+            phone=s.phone,
+            birth_date=s.birth_date,
+            modalidade=s.modalidade,
+            notes=s.notes,
+            faixa_id=s.faixa_id,
+            grau=s.grau,
+            graduacao=graduacao,
+        )
         items.append(
             schemas.StudentWithLoginRead(
                 **base.model_dump(),

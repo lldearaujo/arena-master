@@ -10,7 +10,8 @@ class Student(Base):
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    dojo_id: Mapped[int] = mapped_column(Integer, index=True)
+    # Nulo para atletas criados só por inscrição pública (dojo informado em texto).
+    dojo_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -24,6 +25,8 @@ class Student(Base):
     grau: Mapped[int] = mapped_column(Integer, default=0)
     modalidade: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_dojo_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_faixa_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )

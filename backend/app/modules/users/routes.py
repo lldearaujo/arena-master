@@ -49,7 +49,14 @@ async def update_me(
         user.avatar_url = url
     if payload.name is not None:
         user.name = payload.name.strip() or None
-    if payload.avatar_url is not None or payload.name is not None:
+    if payload.fcm_token is not None:
+        t = payload.fcm_token.strip()
+        user.fcm_token = t or None
+    if (
+        payload.avatar_url is not None
+        or payload.name is not None
+        or payload.fcm_token is not None
+    ):
         await session.commit()
         await session.refresh(user)
     return await _user_me_read(user, session)

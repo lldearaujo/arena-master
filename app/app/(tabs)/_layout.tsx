@@ -1,4 +1,4 @@
-import { Receipt, ScrollText, SquareCheckBig, User } from "lucide-react-native";
+import { Bell, Receipt, ScrollText, SquareCheckBig, User } from "lucide-react-native";
 import { Tabs } from "expo-router";
 import { Redirect } from "expo-router";
 
@@ -9,6 +9,7 @@ const TAB_ICONS = {
   mural: ScrollText,
   index: SquareCheckBig,
   financeiro: Receipt,
+  competicoes: Bell,
   perfil: User,
 } as const;
 
@@ -86,6 +87,16 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <TabIcon routeName="financeiro" focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="competicoes"
+        options={{
+          title: "Eventos",
+          headerShown: false,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon routeName="competicoes" focused={focused} color={color} />
           ),
         }}
       />
