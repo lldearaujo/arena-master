@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 
 import { api } from "../../api/client";
 import { useAuthStore, Role } from "../../store/auth";
@@ -62,7 +63,34 @@ export function LoginPage() {
     onSuccess: () => {
       navigate("/dashboard", { replace: true });
     },
-    onError: () => {
+    onError: (err) => {
+      if (isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 404) {
+          setError(
+            "Rota não encontrada (404). Outro serviço pode estar na porta 8000 ou VITE_API_URL está errada. Abra http://localhost:8000/docs e confira se é a API Arena Master."
+          );
+          return;
+        }
+        if (status === 401) {
+          const data = err.response?.data;
+          const detail =
+            data &&
+            typeof data === "object" &&
+            "detail" in data &&
+            typeof (data as { detail: unknown }).detail === "string"
+              ? (data as { detail: string }).detail
+              : "Credenciais inválidas.";
+          setError(detail);
+          return;
+        }
+        if (!err.response) {
+          setError(
+            "Sem resposta do servidor. Confira se o backend está rodando (uvicorn) e se a URL base da API está correta."
+          );
+          return;
+        }
+      }
       setError("Falha ao entrar. Verifique suas credenciais.");
     },
   });

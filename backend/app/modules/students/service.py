@@ -3,9 +3,13 @@ from typing import Iterable
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.dojo_modalidade import DojoModalidade
 from app.models.faixa import Faixa
+from app.models.finance import Plan
 from app.models.student import Student
 from app.models.student_guardian import StudentGuardian
+from app.models.turma import Turma
+from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
 from app.models.dojo import Dojo
 from app.core.security import get_password_hash
@@ -18,20 +22,35 @@ from app.modules.students.schemas import (
 )
 
 
+async def assert_faixa_grau_for_modalidade(
+    session: AsyncSession,
+    dojo_id: int,
+    faixa_id: int | None,
+    modalidade: str | None,
+    grau: int | None,
+) -> None:
+    """Garante que faixa pertence ao dojo, à modalidade informada e grau está no limite."""
+    if faixa_id is None:
+        return
+    faixa = await session.get(Faixa, faixa_id)
+    if faixa is None or faixa.dojo_id != dojo_id:
+        raise ValueError("Faixa inválida")
+    dm = await session.get(DojoModalidade, faixa.modalidade_id)
+    if dm is None or dm.dojo_id != dojo_id:
+        raise ValueError("Faixa inválida")
+    part = (modalidade or "").split(",")[0].strip()
+    if not part:
+        raise ValueError("Informe a modalidade para usar graduação")
+    if dm.name.strip().casefold() != part.casefold():
+        raise ValueError("A faixa selecionada não pertence à modalidade informada")
+    g = int(grau if grau is not None else 0)
+    if g < 0 or g > int(faixa.max_graus):
+        raise ValueError("Grau ou dan fora do limite da faixa selecionada")
+
+
 def default_password_for_student_id(student_id: int) -> str:
     """Senha padrão de acesso ao app (mesma regra de create_student)."""
     return f"aluno{student_id:04d}"
-
-
-async def _get_default_active_plan_id(session: AsyncSession, dojo_id: int) -> int | None:
-    """Heurística simples: se existir algum plano ativo no dojo, pega o primeiro por ID."""
-    from app.models.finance import Plan
-
-    result = await session.execute(
-        select(Plan.id).where(and_(Plan.dojo_id == dojo_id, Plan.active.is_(True))).order_by(Plan.id)
-    )
-    row = result.first()
-    return int(row[0]) if row else None
 
 
 def _students_query(dojo_id: int) -> Select[tuple[Student]]:
@@ -59,6 +78,9 @@ async def create_student(
     dojo_id: int,
     data: StudentCreate,
 ) -> tuple[Student, str, str]:
+    await assert_faixa_grau_for_modalidade(
+        session, dojo_id, data.faixa_id, data.modalidade, data.grau
+    )
     # Primeiro criamos o registro do aluno
     student = Student(
         dojo_id=dojo_id,
@@ -102,12 +124,15 @@ async def create_student(
     # Vincula o usuário recém-criado ao aluno
     student.user_id = user.id
 
-    # Garante que todo aluno tenha um plano associado (se já existir algum plano ativo no dojo).
+    # Garante que todo aluno tenha um plano associado (se já existir plano ativo compatível com a modalidade).
     # A assinatura começa como pendente de pagamento e libera créditos apenas após confirmação do professor.
-    default_plan_id = await _get_default_active_plan_id(session, dojo_id)
+    from app.modules.finance import service as finance_service
+
+    default_plan_id = await finance_service.first_matching_active_plan_id(
+        session, dojo_id, data.modalidade
+    )
     if default_plan_id is not None:
         from app.modules.finance import schemas as finance_schemas
-        from app.modules.finance import service as finance_service
 
         try:
             await finance_service.create_student_subscription(
@@ -162,6 +187,16 @@ async def update_student(
 
     update_data = data.model_dump(exclude_unset=True)
     is_active = update_data.pop("is_active", None)
+
+    next_modalidade = (
+        update_data["modalidade"] if "modalidade" in update_data else student.modalidade
+    )
+    next_faixa = update_data["faixa_id"] if "faixa_id" in update_data else student.faixa_id
+    next_grau = update_data["grau"] if "grau" in update_data else student.grau
+    await assert_faixa_grau_for_modalidade(
+        session, dojo_id, next_faixa, next_modalidade, next_grau
+    )
+
     for field, value in update_data.items():
         setattr(student, field, value)
 
@@ -286,6 +321,120 @@ async def remove_guardian(
     await session.delete(guardian)
     await session.commit()
     return True
+
+
+async def allowed_modalidades_for_student_turmas(
+    session: AsyncSession,
+    student: Student,
+) -> list[str] | None:
+    """Modalidades para filtrar turmas no app. None = sem filtro (todas do dia no dojo).
+
+    Usa `students.modalidade` ou, se vazio, as modalidades restritas do plano da assinatura
+    (ativa ou pendente de pagamento).
+    """
+    direct = (student.modalidade or "").strip()
+    if direct:
+        return [direct]
+    if student.dojo_id is None:
+        return None
+    from app.modules.finance import service as finance_service
+
+    sub = await finance_service.get_subscription_for_modalidade_resolution(
+        session, student.dojo_id, student.id
+    )
+    if sub is None:
+        return None
+    plan = await session.get(Plan, sub.plan_id)
+    if plan is None:
+        return None
+    targets = finance_service.plan_restricted_modalidades(plan)
+    if not targets:
+        return None
+    return targets
+
+
+async def _modalidade_from_active_turmas(
+    session: AsyncSession,
+    student_id: int,
+) -> str | None:
+    """Modalidades distintas das turmas em que o aluno está matriculado (ativo)."""
+    result = await session.execute(
+        select(Turma.modalidade)
+        .join(TurmaEnrollment, TurmaEnrollment.turma_id == Turma.id)
+        .where(
+            and_(
+                TurmaEnrollment.student_id == student_id,
+                TurmaEnrollment.active.is_(True),
+                Turma.active.is_(True),
+                Turma.modalidade.is_not(None),
+            )
+        )
+    )
+    raw = [row[0] for row in result.all() if row[0] is not None]
+    seen_cf: set[str] = set()
+    ordered: list[str] = []
+    for m in raw:
+        label = str(m).strip()
+        if not label:
+            continue
+        k = label.casefold()
+        if k in seen_cf:
+            continue
+        seen_cf.add(k)
+        ordered.append(label)
+    if not ordered:
+        return None
+    if len(ordered) == 1:
+        return ordered[0]
+    return ", ".join(ordered)
+
+
+async def display_modalidade_for_student(
+    session: AsyncSession,
+    student: Student,
+) -> str | None:
+    """Texto de modalidade para perfil / API (cadastro, plano ou turmas matriculadas)."""
+    direct = (student.modalidade or "").strip()
+    if direct:
+        return direct
+    allowed = await allowed_modalidades_for_student_turmas(session, student)
+    if allowed:
+        if len(allowed) == 1:
+            return allowed[0]
+        return ", ".join(allowed)
+    return await _modalidade_from_active_turmas(session, student.id)
+
+
+async def exibir_graduacao_no_perfil(
+    session: AsyncSession,
+    student: Student,
+    modalidade_display: str | None,
+) -> bool:
+    """False quando todas as modalidades exibidas existem no catálogo e nenhuma usa graduação."""
+    dojo_id = student.dojo_id
+    if dojo_id is None:
+        return True
+    text = (modalidade_display or "").strip()
+    if not text:
+        return True
+    from app.modules.modalidades import service as modalidades_service
+
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    if not parts:
+        return True
+    any_unknown = False
+    any_has_grad = False
+    for part in parts:
+        row = await modalidades_service.get_modalidade_by_name_casefold(
+            session, dojo_id, part
+        )
+        if row is None:
+            any_unknown = True
+        elif row.has_graduation_system:
+            any_has_grad = True
+    if any_unknown or any_has_grad:
+        return True
+    return False
 
 
 async def get_student_for_user(

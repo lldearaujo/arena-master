@@ -13,6 +13,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "../../src/api/client";
+import { isLikelyExpoGo, registerAndroidFcmAndSync } from "../../src/notifications/androidFcm";
+import { useAuthStore } from "../../src/store/auth";
 import { tokens } from "../../src/ui/tokens";
 
 type Competition = {
@@ -32,7 +34,9 @@ type NotifRow = {
 export default function CompeticoesScreen() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
   const [fcm, setFcm] = useState("");
+  const [fcmHint, setFcmHint] = useState<string | null>(null);
 
   const { data: me } = useQuery({
     queryKey: ["user-me"],
@@ -67,6 +71,31 @@ export default function CompeticoesScreen() {
       await api.patch("/api/users/me", { fcm_token: fcm.trim() || null });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user-me"] }),
+  });
+
+  const syncNativeFcm = useMutation({
+    mutationFn: async () => {
+      if (userId == null) throw new Error("Sessão inválida");
+      return registerAndroidFcmAndSync(userId);
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        setFcmHint("Token FCM registado no servidor.");
+        void qc.invalidateQueries({ queryKey: ["user-me"] });
+        setFcm(res.token);
+        return;
+      }
+      const msg: Record<typeof res.reason, string> = {
+        not_android: "Sincronização automática do token FCM só está disponível no Android.",
+        expo_go: "Use um development build (EAS) ou build de loja — o Expo Go não carrega o seu google-services.json.",
+        simulator: "Use um dispositivo físico para obter token FCM.",
+        permission_denied: "Ative as notificações nas definições do sistema para registar o token.",
+        no_token: "Não foi possível obter o token do dispositivo.",
+        sync_failed: "Token obtido, mas falhou ao guardar no servidor. Tente de novo.",
+      };
+      setFcmHint(msg[res.reason]);
+    },
+    onError: () => setFcmHint("Erro ao sincronizar."),
   });
 
   return (
@@ -119,11 +148,41 @@ export default function CompeticoesScreen() {
       ))}
 
       <Text style={{ fontSize: 17, fontWeight: "700", marginTop: 24, marginBottom: 8, color: tokens.color.textPrimary }}>
-        Token push (FCM)
+        Notificações push (FCM)
       </Text>
       <Text style={{ color: tokens.color.textMuted, fontSize: 13, marginBottom: 8 }}>
-        Registe o token do Expo Notifications para receber avisos no telemóvel.
+        No Android, o app regista o token FCM nativo (Firebase) ao iniciar sessão, compatível com o envio do servidor. Pode
+        sincronizar manualmente ou colar um token abaixo (ex.: outro dispositivo ou teste).
       </Text>
+      {isLikelyExpoGo() && (
+        <Text style={{ color: tokens.color.textMuted, fontSize: 12, marginBottom: 8 }}>
+          Está no Expo Go: construa com `eas build` ou `npx expo run:android` para aplicar o Firebase.
+        </Text>
+      )}
+      {Platform.OS === "android" && userId != null && (
+        <Pressable
+          onPress={() => {
+            setFcmHint(null);
+            syncNativeFcm.mutate();
+          }}
+          style={{
+            marginBottom: 12,
+            backgroundColor: tokens.color.bgCard,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: tokens.color.borderSubtle,
+          }}
+        >
+          <Text style={{ color: tokens.color.textPrimary, fontWeight: "700" }}>
+            {syncNativeFcm.isPending ? "A sincronizar…" : "Sincronizar token FCM (Android)"}
+          </Text>
+        </Pressable>
+      )}
+      {fcmHint != null && (
+        <Text style={{ color: tokens.color.textMuted, fontSize: 12, marginBottom: 8 }}>{fcmHint}</Text>
+      )}
       <TextInput
         value={fcm}
         onChangeText={setFcm}

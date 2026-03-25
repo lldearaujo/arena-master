@@ -20,21 +20,43 @@ async def list_modalidades(
     return list(result.scalars().all())
 
 
+def _coerce_skills_labels_from_row(row: DojoModalidade | None) -> list[str] | None:
+    if row is None:
+        return None
+    raw = getattr(row, "skills_labels", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or len(raw) != 5:
+        return None
+    out = [str(x).strip() for x in raw]
+    if any(not s for s in out):
+        return None
+    return out
+
+
 async def list_modalidades_unificadas(
     session: AsyncSession,
     dojo_id: int,
-) -> list[tuple[int | None, str, bool]]:
-    """(id ou None, nome, em_catalogo). Inclui catálogo + nomes só em alunos/turmas."""
+) -> list[tuple[int | None, str, bool, bool, list[str] | None]]:
+    """(id, nome, em_catalogo, has_graduation_system, skills_labels). Legado sem id: skills_labels None."""
     catalog = await list_modalidades(session, dojo_id)
     seen: set[str] = set()
-    out: list[tuple[int | None, str, bool]] = []
+    out: list[tuple[int | None, str, bool, bool, list[str] | None]] = []
 
     for row in catalog:
         key = row.name.casefold()
         if key in seen:
             continue
         seen.add(key)
-        out.append((row.id, row.name, True))
+        out.append(
+            (
+                row.id,
+                row.name,
+                True,
+                bool(row.has_graduation_system),
+                _coerce_skills_labels_from_row(row),
+            )
+        )
 
     todas_strings = await turmas_service.list_modalidades_for_dojo(session, dojo_id)
     for nome in todas_strings:
@@ -42,10 +64,29 @@ async def list_modalidades_unificadas(
         if key in seen:
             continue
         seen.add(key)
-        out.append((None, nome, False))
+        out.append((None, nome, False, True, None))
 
     out.sort(key=lambda x: x[1].casefold())
     return out
+
+
+async def get_modalidade_by_name_casefold(
+    session: AsyncSession,
+    dojo_id: int,
+    name: str,
+) -> DojoModalidade | None:
+    nm = name.strip()
+    if not nm:
+        return None
+    result = await session.execute(
+        select(DojoModalidade).where(
+            and_(
+                DojoModalidade.dojo_id == dojo_id,
+                func.lower(DojoModalidade.name) == func.lower(nm),
+            )
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_modalidade_by_name_exact(
@@ -176,7 +217,12 @@ async def create_modalidade(
     if dup.scalar_one_or_none() is not None:
         raise ValueError("Já existe uma modalidade com esse nome neste dojo")
 
-    row = DojoModalidade(dojo_id=dojo_id, name=name)
+    row = DojoModalidade(
+        dojo_id=dojo_id,
+        name=name,
+        has_graduation_system=data.has_graduation_system,
+        skills_labels=data.skills_labels,
+    )
     session.add(row)
     await session.commit()
     await session.refresh(row)
@@ -230,6 +276,11 @@ async def update_modalidade(
         )
 
     row.name = new_name
+    dump = data.model_dump(exclude_unset=True)
+    if "has_graduation_system" in dump and data.has_graduation_system is not None:
+        row.has_graduation_system = data.has_graduation_system
+    if "skills_labels" in dump:
+        row.skills_labels = data.skills_labels
     await session.commit()
     await session.refresh(row)
     return row

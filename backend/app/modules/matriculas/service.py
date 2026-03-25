@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
 from app.models.matricula_link import MatriculaLink
-from app.models.faixa import Faixa
+from app.modules.faixas.service import list_faixas_read
 from app.models.student import Student
 from app.models.student_guardian import StudentGuardian
 from app.models.user import User
@@ -15,6 +15,7 @@ from app.models.finance import StudentSubscription, StudentSubscriptionStatus
 from app.modules.finance import service as finance_service
 from app.modules.matriculas import schemas
 from app.modules.students import service as students_service
+from app.modules.turmas import service as turmas_service
 
 
 def _generate_token() -> str:
@@ -75,34 +76,21 @@ async def get_public_form_data(
         slug=dojo.slug,
     )
     plans = await finance_service.list_active_plans(session, dojo.id)
-    # Modalidades já cadastradas no dojo (para preencher um select sem hardcode).
-    modalidade_rows = await session.execute(
-        select(Student.modalidade)
-        .where(
-            and_(
-                Student.dojo_id == dojo.id,
-                Student.modalidade.is_not(None),
-            )
-        )
-        .distinct()
-        .order_by(Student.modalidade)
-    )
-    modalidades = [str(r[0]) for r in modalidade_rows.all() if r[0] is not None]
+    # Mesma lista do painel: catálogo do dojo + modalidades já usadas em turmas/alunos.
+    modalidades = await turmas_service.list_modalidades_for_dojo(session, dojo.id)
 
-    # Faixas/graduações do dojo (para popular o select de graduação).
-    faixa_result = await session.execute(
-        select(Faixa)
-        .where(Faixa.dojo_id == dojo.id)
-        .order_by(Faixa.ordem, Faixa.id)
-    )
+    # Faixas por modalidade (para popular o select de graduação).
+    faixa_reads = await list_faixas_read(session, dojo.id)
     faixas = [
         schemas.FaixaOption(
-            id=f.id,
-            name=f.name,
-            max_graus=f.max_graus,
-            exibir_como_dan=bool(f.exibir_como_dan),
+            id=r.id,
+            name=r.name,
+            max_graus=r.max_graus,
+            exibir_como_dan=bool(r.exibir_como_dan),
+            modalidade_id=r.modalidade_id,
+            modalidade_name=r.modalidade_name,
         )
-        for f in faixa_result.scalars().all()
+        for r in faixa_reads
     ]
 
     return dojo_read, plans, modalidades, faixas
@@ -145,23 +133,28 @@ async def submit_matricula(
 
     dojo_id = link.dojo_id
 
-    # Valida e normaliza faixa/grau selecionados.
+    # Valida e normaliza faixa/grau selecionados (faixa deve bater com a modalidade).
     selected_faixa_id = payload.student.faixa_id
     selected_grau = payload.student.grau if payload.student.grau is not None else 0
-    faixa = None
     if selected_faixa_id is not None:
-        faixa_res = await session.execute(
-            select(Faixa).where(
-                and_(Faixa.id == selected_faixa_id, Faixa.dojo_id == dojo_id)
-            )
+        await students_service.assert_faixa_grau_for_modalidade(
+            session,
+            dojo_id,
+            selected_faixa_id,
+            payload.student.modalidade,
+            selected_grau,
         )
-        faixa = faixa_res.scalar_one_or_none()
-        if faixa is None:
-            raise ValueError("Faixa inválida para este dojo")
-        if selected_grau < 0 or selected_grau > int(faixa.max_graus):
-            raise ValueError("Grau/dan fora do limite para a faixa selecionada")
     else:
         selected_grau = 0
+
+    from app.modules.finance import service as finance_service
+
+    await finance_service.assert_plan_allowed_for_modalidade(
+        session,
+        dojo_id,
+        payload.plan_id,
+        payload.student.modalidade,
+    )
 
     # Verifica usuário existente (email é único no sistema).
     existing_user = await session.execute(

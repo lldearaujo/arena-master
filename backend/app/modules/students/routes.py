@@ -24,6 +24,10 @@ async def _student_to_read(
     student: Student,
 ) -> schemas.StudentRead:
     graduacao = await service.get_graduacao_display(session, student)
+    modalidade_display = await service.display_modalidade_for_student(session, student)
+    exibir_grad = await service.exibir_graduacao_no_perfil(
+        session, student, modalidade_display
+    )
     return schemas.StudentRead(
         id=student.id,
         dojo_id=student.dojo_id,
@@ -34,11 +38,12 @@ async def _student_to_read(
         email=student.email,
         phone=student.phone,
         birth_date=student.birth_date,
-        modalidade=student.modalidade,
+        modalidade=modalidade_display,
         notes=student.notes,
         faixa_id=student.faixa_id,
         grau=student.grau,
         graduacao=graduacao,
+        exibir_graduacao_no_perfil=exibir_grad,
     )
 
 
@@ -109,9 +114,15 @@ async def create_student(
     admin: AdminDep,
     session: SessionDep,
 ) -> schemas.StudentCreatedResponse:
-    student, initial_password, login_email = await service.create_student(
-        session, admin.dojo_id, payload
-    )
+    try:
+        student, initial_password, login_email = await service.create_student(
+            session, admin.dojo_id, payload
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     student_read = await _student_to_read(session, student)
     return schemas.StudentCreatedResponse(
         student=student_read,
@@ -120,7 +131,22 @@ async def create_student(
     )
 
 
-@router.get("/{student_id}", response_model=schemas.StudentRead)
+# Rotas literais antes de /{student_id} — senão "me" casa como string e vira 403 (admin).
+@router.get("/me", response_model=schemas.StudentRead)
+async def get_me(
+    user: UserDep,
+    session: SessionDep,
+) -> schemas.StudentRead:
+    student = await service.get_student_for_user(session, user)
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aluno não encontrado para este usuário",
+        )
+    return await _student_to_read(session, student)
+
+
+@router.get("/{student_id:int}", response_model=schemas.StudentRead)
 async def get_student(
     student_id: int,
     admin: AdminDep,
@@ -136,7 +162,7 @@ async def get_student(
 
 
 @router.post(
-    "/{student_id}/reset-password",
+    "/{student_id:int}/reset-password",
     response_model=schemas.StudentPasswordResetResponse,
 )
 async def reset_student_password(
@@ -160,19 +186,25 @@ async def reset_student_password(
     )
 
 
-@router.put("/{student_id}", response_model=schemas.StudentRead)
+@router.put("/{student_id:int}", response_model=schemas.StudentRead)
 async def update_student(
     student_id: int,
     payload: schemas.StudentUpdate,
     admin: AdminDep,
     session: SessionDep,
 ) -> schemas.StudentRead:
-    student = await service.update_student(
-        session,
-        admin.dojo_id,
-        student_id,
-        payload,
-    )
+    try:
+        student = await service.update_student(
+            session,
+            admin.dojo_id,
+            student_id,
+            payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     if student is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -181,7 +213,7 @@ async def update_student(
     return await _student_to_read(session, student)
 
 
-@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{student_id:int}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_student(
     student_id: int,
     admin: AdminDep,
@@ -195,7 +227,7 @@ async def delete_student(
         )
 
 
-@router.get("/{student_id}/guardians", response_model=list[schemas.GuardianRead])
+@router.get("/{student_id:int}/guardians", response_model=list[schemas.GuardianRead])
 async def list_student_guardians(
     student_id: int,
     admin: AdminDep,
@@ -210,7 +242,7 @@ async def list_student_guardians(
 
 
 @router.post(
-    "/{student_id}/guardians",
+    "/{student_id:int}/guardians",
     response_model=schemas.GuardianRead,
     status_code=status.HTTP_201_CREATED,
 )
@@ -235,7 +267,7 @@ async def add_student_guardian(
     return schemas.GuardianRead.model_validate(guardian)
 
 
-@router.delete("/{student_id}/guardians/{user_id}", status_code=204)
+@router.delete("/{student_id:int}/guardians/{user_id:int}", status_code=204)
 async def remove_student_guardian(
     student_id: int,
     user_id: int,
@@ -253,18 +285,4 @@ async def remove_student_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Responsável não encontrado para este aluno",
         )
-
-
-@router.get("/me", response_model=schemas.StudentRead)
-async def get_me(
-    user: UserDep,
-    session: SessionDep,
-) -> schemas.StudentRead:
-    student = await service.get_student_for_user(session, user)
-    if student is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Aluno não encontrado para este usuário",
-        )
-    return await _student_to_read(session, student)
 

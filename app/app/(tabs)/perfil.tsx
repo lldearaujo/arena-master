@@ -25,6 +25,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Linking,
+  StyleSheet,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Polygon } from "react-native-svg";
@@ -52,6 +53,8 @@ type StudentMe = {
   modalidade: string | null;
   notes: string | null;
   grau: number;
+  /** Quando false, modalidade(s) no catálogo sem sistema de faixas/graus */
+  exibir_graduacao_no_perfil?: boolean;
 };
 
 type DojoMe = {
@@ -77,6 +80,86 @@ function resolveAvatarUri(url: string | null | undefined): { uri: string } | nul
   const base = api.defaults.baseURL?.replace(/\/$/, "") ?? "";
   if (url.startsWith("http")) return { uri: url };
   return { uri: `${base}${url.startsWith("/") ? "" : "/"}${url}` };
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+  compact,
+}: {
+  title: string;
+  subtitle?: string;
+  compact?: boolean;
+}) {
+  return (
+    <View style={{ marginBottom: compact ? tokens.space.sm : tokens.space.md }}>
+      <Text
+        style={{
+          color: tokens.color.textPrimary,
+          fontSize: tokens.text.lg,
+          fontWeight: "800",
+          letterSpacing: 0.3,
+        }}
+      >
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text
+          style={{
+            marginTop: tokens.space.xs,
+            color: tokens.color.textMuted,
+            fontSize: tokens.text.xs,
+            lineHeight: 18,
+          }}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function ProfileField({
+  label,
+  value,
+  isLast,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        paddingVertical: tokens.space.sm,
+        borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth * 2,
+        borderBottomColor: "rgba(255,255,255,0.14)",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 10,
+          color: "rgba(255,255,255,0.55)",
+          fontWeight: "700",
+          letterSpacing: 1,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          marginTop: 6,
+          fontSize: tokens.text.md,
+          color: tokens.color.textOnPrimary,
+          fontWeight: "600",
+          lineHeight: 22,
+        }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
 }
 
 export default function PerfilScreen() {
@@ -317,6 +400,7 @@ export default function PerfilScreen() {
   const displayName = student?.name ?? me?.name ?? user?.email ?? "Aluno";
   const displayAvatar = me?.avatar_url ?? user?.avatarUrl;
   const avatarSource = resolveAvatarUri(displayAvatar);
+  const showGraduacaoNoPerfil = student?.exibir_graduacao_no_perfil !== false;
 
   const checkinsCount = checkinsRange?.length ?? 0;
   const expectedSessions = 12;
@@ -325,10 +409,19 @@ export default function PerfilScreen() {
   if (!user) return null;
 
   const isAluno = user.role === "aluno";
-  const isSmallScreen = width < 420;
+  /** Só empilha em telas bem estreitas — layout “antigo” usa mais linha/3 colunas. */
+  const isVeryNarrow = width < 360;
   const gridGap = tokens.space.md;
   const contentWidth = width - tokens.space.lg * 2;
   const twoColItemWidth = (contentWidth - gridGap) / 2;
+  const modalityDisplay = student?.modalidade?.trim() || null;
+  const techniquesBullets =
+    modalityDisplay
+      ? modalityDisplay
+          .split(/[,;/]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
 
   const skillsLabels = mySkills?.skills?.length === 5 ? mySkills.skills : ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"];
   const skillsRatings = mySkills?.ratings?.length === 5 ? mySkills.ratings : [0, 0, 0, 0, 0];
@@ -366,111 +459,114 @@ export default function PerfilScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Informações Pessoais */}
-        <Text
-          style={{
-            color: tokens.color.textPrimary,
-            fontSize: tokens.text.lg,
-            fontWeight: "800",
-            marginBottom: tokens.space.md,
-          }}
-        >
-          Informações Pessoais
-        </Text>
+        <SectionHeader
+          title="Informações pessoais"
+          subtitle="Toque na foto para alterar (alunos)."
+          compact
+        />
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "center",
+            flexDirection: isVeryNarrow ? "column" : "row",
+            alignItems: isVeryNarrow ? "stretch" : "flex-start",
             backgroundColor: tokens.color.bgCard,
-            borderRadius: tokens.radius.lg,
+            borderRadius: tokens.radius.lg * 1.25,
             padding: tokens.space.lg,
-            marginBottom: tokens.space.xl,
+            marginBottom: tokens.space.lg,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.08)",
           }}
         >
           <Pressable
             onPress={isAluno ? pickImage : undefined}
             disabled={avatarMutation.isPending || !isAluno}
             style={{
-              width: 90,
-              height: 90,
-              borderRadius: 45,
+              width: 88,
+              height: 88,
+              borderRadius: 44,
               backgroundColor: tokens.color.borderStrong,
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",
+              alignSelf: isVeryNarrow ? "center" : "flex-start",
+              marginBottom: isVeryNarrow ? tokens.space.md : 0,
             }}
           >
             {avatarSource ? (
               <Image source={avatarSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
             ) : (
-              <Text style={{ fontSize: 36 }}>👤</Text>
+              <Text style={{ fontSize: 34 }}>👤</Text>
             )}
           </Pressable>
-          <View style={{ flex: 1, marginLeft: tokens.space.lg }}>
-            <Text
-              style={{
-                color: tokens.color.textOnPrimary,
-                fontSize: tokens.text.sm,
-                fontWeight: "600",
-                marginBottom: 4,
-              }}
-            >
-              ALUNO: {displayName}
-            </Text>
-            <Text
-              style={{
-                color: tokens.color.textOnPrimary,
-                fontSize: tokens.text.sm,
-                marginBottom: 4,
-              }}
-            >
-              FAIXA: {me?.graduacao ?? student?.graduacao ?? "—"}
-            </Text>
-            <Text
-              style={{
-                color: tokens.color.textOnPrimary,
-                fontSize: tokens.text.sm,
-              }}
-            >
-              Dojo: {dojo?.name ?? "—"}
-            </Text>
+          <View style={{ flex: 1, marginLeft: isVeryNarrow ? 0 : tokens.space.lg, minWidth: 0 }}>
+            {(() => {
+              const rows: { label: string; value: string }[] = [
+                { label: isAluno ? "Aluno" : "Nome", value: displayName },
+              ];
+              if (!isAluno || showGraduacaoNoPerfil) {
+                rows.push({
+                  label: "Faixa",
+                  value: me?.graduacao ?? student?.graduacao ?? "—",
+                });
+              }
+              if (isAluno) {
+                rows.push({
+                  label: "Modalidade",
+                  value: student?.modalidade?.trim() ? student.modalidade.trim() : "—",
+                });
+              }
+              rows.push({ label: "Dojo", value: dojo?.name ?? "—" });
+              return rows.map((r, i) => (
+                <ProfileField key={`${r.label}-${i}`} label={r.label} value={r.value} isLast={i === rows.length - 1} />
+              ));
+            })()}
           </View>
         </View>
 
-        {/* MEU PROGRESSO ACADÊMICO */}
-        <Text
-          style={{
-            color: tokens.color.textPrimary,
-            fontSize: tokens.text.lg,
-            fontWeight: "800",
-            marginBottom: tokens.space.md,
-          }}
-        >
-          Meu Progresso Acadêmico
-        </Text>
+        <SectionHeader
+          title="Meu progresso acadêmico"
+          subtitle="Presença, técnicas da matrícula e tempo estimado (check-ins)."
+          compact
+        />
         <View
           style={{
             backgroundColor: tokens.color.primary,
-            borderRadius: tokens.radius.lg,
-            padding: tokens.space.lg,
-            marginBottom: tokens.space.xl,
+            borderRadius: tokens.radius.lg * 1.25,
+            paddingHorizontal: tokens.space.md,
+            paddingVertical: tokens.space.lg,
+            marginBottom: tokens.space.lg,
+            borderWidth: 1,
+            borderColor: "rgba(0,0,0,0.06)",
           }}
         >
           <Text
             style={{
               color: tokens.color.textOnPrimary,
-              fontSize: tokens.text.md,
-              fontWeight: "700",
-              marginBottom: tokens.space.lg,
+              fontSize: 11,
+              fontWeight: "800",
+              letterSpacing: 1.2,
+              marginBottom: tokens.space.md,
+              textAlign: "center",
             }}
           >
             MEU PROGRESSO ACADÊMICO
           </Text>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: tokens.space.lg }}>
-            {/* Presença */}
-            <View style={{ flex: 1, minWidth: width > 400 ? 100 : "100%" }}>
-              <View style={{ alignItems: "center", marginBottom: tokens.space.sm }}>
+          <View
+            style={{
+              flexDirection: isVeryNarrow ? "column" : "row",
+              alignItems: isVeryNarrow ? "stretch" : "flex-start",
+              gap: isVeryNarrow ? tokens.space.md : tokens.space.sm,
+            }}
+          >
+            {/* Coluna 1 — Presença */}
+            <View
+              style={{
+                flex: isVeryNarrow ? undefined : 1,
+                minWidth: isVeryNarrow ? undefined : 100,
+                alignItems: "center",
+                paddingVertical: tokens.space.xs,
+              }}
+            >
+              <View style={{ alignItems: "center", marginBottom: tokens.space.sm, height: 74, justifyContent: "center" }}>
                 <Svg width={70} height={70} style={{ transform: [{ rotate: "-90deg" }] }}>
                   <Circle
                     cx={35}
@@ -507,17 +603,18 @@ export default function PerfilScreen() {
               <Text
                 style={{
                   color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.xs,
+                  fontSize: 10,
                   textAlign: "center",
-                  fontWeight: "600",
+                  fontWeight: "800",
+                  letterSpacing: 0.6,
                 }}
               >
                 PRESENÇA
               </Text>
               <Text
                 style={{
-                  color: "rgba(255,255,255,0.9)",
-                  fontSize: 11,
+                  color: "rgba(255,255,255,0.88)",
+                  fontSize: 10,
                   textAlign: "center",
                   marginTop: 2,
                 }}
@@ -526,55 +623,102 @@ export default function PerfilScreen() {
               </Text>
             </View>
 
-            {/* Evolução Técnica */}
-            <View style={{ flex: 1.5, minWidth: width > 400 ? 120 : "100%" }}>
+            {!isVeryNarrow ? (
+              <View
+                style={{
+                  width: StyleSheet.hairlineWidth,
+                  alignSelf: "stretch",
+                  backgroundColor: "rgba(255,255,255,0.25)",
+                  marginVertical: tokens.space.xs,
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "rgba(255,255,255,0.2)",
+                }}
+              />
+            )}
+
+            {/* Coluna 2 — Técnicas + objetivos (layout clássico) */}
+            <View
+              style={{
+                flex: isVeryNarrow ? undefined : 2,
+                flexGrow: 1,
+                minWidth: isVeryNarrow ? undefined : 120,
+                paddingHorizontal: isVeryNarrow ? 0 : tokens.space.xs,
+              }}
+            >
               <Text
                 style={{
-                  color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.xs,
-                  fontWeight: "700",
-                  marginBottom: 4,
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 10,
+                  fontWeight: "800",
+                  letterSpacing: 0.6,
+                  marginBottom: 6,
                 }}
               >
-                Técnicas Masterizadas
+                TÉCNICAS MASTERIZADAS
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.95)", fontSize: 12, lineHeight: 18 }}>
+                {techniquesBullets.length > 0
+                  ? techniquesBullets.map((t) => `• ${t}`).join("\n")
+                  : "• —"}
               </Text>
               <Text
                 style={{
                   color: "rgba(255,255,255,0.9)",
-                  fontSize: 11,
-                  marginBottom: tokens.space.sm,
+                  fontSize: 10,
+                  fontWeight: "800",
+                  letterSpacing: 0.6,
+                  marginTop: tokens.space.md,
+                  marginBottom: 6,
                 }}
               >
-                • {student?.modalidade ?? "Jiu-Jitsu"} {"\n"}
-                • Judô / Kata
+                PRÓXIMOS OBJETIVOS
               </Text>
-              <Text
-                style={{
-                  color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.xs,
-                  fontWeight: "700",
-                  marginBottom: 4,
-                }}
-              >
-                Próximos Objetivos
-              </Text>
-              <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 11 }}>
-                • Evolução contínua {"\n"}
-                • Novas técnicas
+              <Text style={{ color: "rgba(255,255,255,0.92)", fontSize: 12, lineHeight: 18 }}>
+                • Evolução contínua{"\n"}• Novas técnicas com o professor
               </Text>
             </View>
 
-            {/* Tempo de Treino */}
-            <View style={{ flex: 1, minWidth: width > 400 ? 90 : "100%" }}>
+            {!isVeryNarrow ? (
+              <View
+                style={{
+                  width: StyleSheet.hairlineWidth,
+                  alignSelf: "stretch",
+                  backgroundColor: "rgba(255,255,255,0.25)",
+                  marginVertical: tokens.space.xs,
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "rgba(255,255,255,0.2)",
+                }}
+              />
+            )}
+
+            {/* Coluna 3 — Tempos */}
+            <View
+              style={{
+                flex: isVeryNarrow ? undefined : 1,
+                minWidth: isVeryNarrow ? undefined : 92,
+                alignItems: isVeryNarrow ? "flex-start" : "flex-end",
+              }}
+            >
               <Text
                 style={{
-                  color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.xs,
-                  fontWeight: "700",
+                  color: "rgba(255,255,255,0.88)",
+                  fontSize: 10,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
                   marginBottom: 4,
                 }}
               >
-                Tempo Total:
+                TEMPO TOTAL
               </Text>
               <Text
                 style={{
@@ -585,94 +729,93 @@ export default function PerfilScreen() {
               >
                 {checkinsCount * 1}h
               </Text>
+              <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 10, marginTop: 2 }}>total (check-ins)</Text>
               <Text
                 style={{
-                  color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.xs,
-                  fontWeight: "700",
-                  marginTop: tokens.space.sm,
+                  color: "rgba(255,255,255,0.88)",
+                  fontSize: 10,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
+                  marginTop: tokens.space.md,
                   marginBottom: 4,
                 }}
               >
-                Média/Semana:
+                MÉDIA / SEMANA
               </Text>
-              <Text
-                style={{
-                  color: tokens.color.textOnPrimary,
-                  fontSize: tokens.text.lg,
-                  fontWeight: "800",
-                }}
-              >
+              <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.lg, fontWeight: "800" }}>
                 {Math.round((checkinsCount / 4) * 10) / 10}h
               </Text>
             </View>
           </View>
         </View>
 
-        {/* MEUS STATUS DETALHADOS */}
-        <Text
-          style={{
-            color: tokens.color.textPrimary,
-            fontSize: tokens.text.lg,
-            fontWeight: "800",
-            marginBottom: tokens.space.md,
-          }}
-        >
-          Meus Status Detalhados
-        </Text>
+        <SectionHeader
+          title="Meus status detalhados"
+          subtitle="Visão rápida da sua jornada na arena."
+          compact
+        />
         <View
           style={{
             flexDirection: "row",
             flexWrap: "wrap",
-            marginBottom: tokens.space.xl,
+            marginBottom: tokens.space.lg,
+            gap: gridGap,
           }}
         >
-          <View
-            style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: isSmallScreen ? 0 : gridGap,
-              marginBottom: gridGap,
-              backgroundColor: tokens.color.borderSubtle,
-              borderRadius: tokens.radius.md,
-              padding: tokens.space.lg,
-              alignItems: "center",
-            }}
-          >
-            <Award size={28} color={tokens.color.primary} strokeWidth={2} />
-            <Text
+          {showGraduacaoNoPerfil ? (
+            <View
               style={{
-                color: tokens.color.textPrimary,
-                fontSize: tokens.text["2xl"],
-                fontWeight: "800",
-                marginTop: tokens.space.sm,
+                width: isVeryNarrow ? "100%" : twoColItemWidth,
+                backgroundColor: tokens.color.borderSubtle,
+                borderRadius: tokens.radius.lg,
+                padding: tokens.space.lg,
+                alignItems: "center",
+                minHeight: 132,
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "rgba(27,48,63,0.06)",
               }}
             >
-              {student?.grau ?? 0}
-            </Text>
-            <Text
-              style={{
-                color: tokens.color.textMuted,
-                fontSize: tokens.text.xs,
-                textAlign: "center",
-                marginTop: 4,
-              }}
-            >
-              GRAUS ADQUIRIDOS
-            </Text>
-          </View>
+              <Award size={26} color={tokens.color.primary} strokeWidth={2} />
+              <Text
+                style={{
+                  color: tokens.color.textPrimary,
+                  fontSize: tokens.text["2xl"],
+                  fontWeight: "800",
+                  marginTop: tokens.space.sm,
+                }}
+              >
+                {student?.grau ?? 0}
+              </Text>
+              <Text
+                style={{
+                  color: tokens.color.textMuted,
+                  fontSize: 10,
+                  textAlign: "center",
+                  marginTop: 6,
+                  fontWeight: "700",
+                  letterSpacing: 0.6,
+                }}
+              >
+                GRAUS ADQUIRIDOS
+              </Text>
+            </View>
+          ) : null}
 
           <View
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: 0,
-              marginBottom: gridGap,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
               backgroundColor: tokens.color.borderSubtle,
-              borderRadius: tokens.radius.md,
+              borderRadius: tokens.radius.lg,
               padding: tokens.space.lg,
               alignItems: "center",
+              minHeight: 132,
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "rgba(27,48,63,0.06)",
             }}
           >
-            <Trophy size={28} color={tokens.color.primary} strokeWidth={2} />
+            <Trophy size={26} color={tokens.color.primary} strokeWidth={2} />
             <Text
               style={{
                 color: tokens.color.textPrimary,
@@ -686,9 +829,11 @@ export default function PerfilScreen() {
             <Text
               style={{
                 color: tokens.color.textMuted,
-                fontSize: tokens.text.xs,
+                fontSize: 10,
                 textAlign: "center",
-                marginTop: 4,
+                marginTop: 6,
+                fontWeight: "700",
+                letterSpacing: 0.6,
               }}
             >
               COMPETIÇÕES DISPUTADAS
@@ -697,69 +842,77 @@ export default function PerfilScreen() {
 
           <View
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: isSmallScreen ? 0 : gridGap,
-              marginBottom: 0,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
               backgroundColor: tokens.color.borderSubtle,
-              borderRadius: tokens.radius.md,
+              borderRadius: tokens.radius.lg,
               padding: tokens.space.lg,
               alignItems: "center",
+              minHeight: 132,
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "rgba(27,48,63,0.06)",
             }}
           >
-            <Target size={28} color={tokens.color.primary} strokeWidth={2} />
+            <Target size={26} color={tokens.color.primary} strokeWidth={2} />
             <Text
               style={{
                 color: tokens.color.textPrimary,
-                fontSize: tokens.text.sm,
-                fontWeight: "700",
+                fontSize: tokens.text["2xl"],
+                fontWeight: "800",
                 marginTop: tokens.space.sm,
-                textAlign: "center",
               }}
             >
-              {student?.modalidade ?? "—"}
+              {checkinsCount}
             </Text>
             <Text
               style={{
                 color: tokens.color.textMuted,
-                fontSize: tokens.text.xs,
+                fontSize: 10,
                 textAlign: "center",
-                marginTop: 4,
+                marginTop: 6,
+                fontWeight: "700",
+                letterSpacing: 0.6,
               }}
             >
-              TREINOS ESPECÍFICOS
+              CHECK-INS (30 DIAS)
             </Text>
           </View>
 
           <View
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: 0,
-              marginBottom: 0,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
               backgroundColor: tokens.color.borderSubtle,
-              borderRadius: tokens.radius.md,
+              borderRadius: tokens.radius.lg,
               padding: tokens.space.lg,
               alignItems: "center",
+              minHeight: 132,
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "rgba(27,48,63,0.06)",
             }}
           >
-            <MessageSquare size={28} color={tokens.color.primary} strokeWidth={2} />
+            <MessageSquare size={26} color={tokens.color.primary} strokeWidth={2} />
             <Text
               style={{
                 color: tokens.color.textPrimary,
-                fontSize: tokens.text.xs,
+                fontSize: tokens.text.sm,
                 textAlign: "center",
                 marginTop: tokens.space.sm,
-                flex: 1,
+                lineHeight: 20,
+                fontWeight: "600",
               }}
-              numberOfLines={3}
+              numberOfLines={4}
             >
-              {student?.notes ?? "Nenhuma nota do mestre."}
+              {student?.notes?.trim() ? student.notes.trim() : "Nenhuma nota do mestre."}
             </Text>
             <Text
               style={{
                 color: tokens.color.textMuted,
-                fontSize: tokens.text.xs,
+                fontSize: 10,
                 textAlign: "center",
-                marginTop: 4,
+                marginTop: 8,
+                fontWeight: "700",
+                letterSpacing: 0.6,
               }}
             >
               NOTAS DO MESTRE
@@ -769,26 +922,24 @@ export default function PerfilScreen() {
 
         {isAluno && (
           <View style={{ marginBottom: tokens.space.xl }}>
-            <Text
-              style={{
-                color: tokens.color.textPrimary,
-                fontSize: tokens.text.lg,
-                fontWeight: "800",
-                marginBottom: tokens.space.md,
-              }}
-            >
-              Habilidades
-            </Text>
+            <SectionHeader
+              title="Habilidades"
+              subtitle="Radar com as 5 dimensões avaliadas pelo professor do dojo (0 a 10)."
+            />
             <View
               style={{
                 backgroundColor: tokens.color.bgCard,
                 borderRadius: tokens.radius.lg,
-                padding: tokens.space.lg,
+                paddingHorizontal: tokens.space.md,
+                paddingTop: tokens.space.lg,
+                paddingBottom: tokens.space.xl + 8,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
               }}
             >
-              <View style={{ alignItems: "center" }}>
+              <View style={{ alignItems: "center", overflow: "visible" }}>
                 <RadarChart
-                  size={Math.min(contentWidth, 320)}
+                  size={Math.min(contentWidth - tokens.space.md * 2, 300)}
                   labels={skillsLabels}
                   values={skillsRatings}
                   maxValue={10}
@@ -797,9 +948,11 @@ export default function PerfilScreen() {
               <Text
                 style={{
                   marginTop: tokens.space.md,
-                  color: tokens.color.textMuted,
+                  color: "rgba(255,255,255,0.65)",
                   fontSize: tokens.text.xs,
                   textAlign: "center",
+                  lineHeight: 18,
+                  paddingHorizontal: tokens.space.sm,
                 }}
               >
                 Avaliação do seu professor (0 a 10) para as 5 habilidades do dojo.
@@ -811,15 +964,15 @@ export default function PerfilScreen() {
         {/* Navegação inferior */}
         <View
           style={{
-            flexDirection: isSmallScreen ? "column" : "row",
-            flexWrap: isSmallScreen ? "nowrap" : "wrap",
+            flexDirection: isVeryNarrow ? "column" : "row",
+            flexWrap: isVeryNarrow ? "nowrap" : "wrap",
             marginBottom: tokens.space.xl,
           }}
         >
           <Pressable
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: isSmallScreen ? 0 : gridGap,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
+              marginRight: isVeryNarrow ? 0 : gridGap,
               marginBottom: gridGap,
               flexDirection: "row",
               alignItems: "center",
@@ -846,7 +999,7 @@ export default function PerfilScreen() {
           </Pressable>
           <Pressable
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
               marginRight: 0,
               marginBottom: gridGap,
               flexDirection: "row",
@@ -875,8 +1028,8 @@ export default function PerfilScreen() {
           <Pressable
             onPress={handleContatoDojo}
             style={{
-              width: isSmallScreen ? "100%" : twoColItemWidth,
-              marginRight: isSmallScreen ? 0 : gridGap,
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
+              marginRight: isVeryNarrow ? 0 : gridGap,
               marginBottom: 0,
               flexDirection: "row",
               alignItems: "center",
@@ -906,7 +1059,7 @@ export default function PerfilScreen() {
             <Pressable
               onPress={() => setIsChangePasswordOpen(true)}
               style={{
-                width: isSmallScreen ? "100%" : twoColItemWidth,
+                width: isVeryNarrow ? "100%" : twoColItemWidth,
                 marginRight: 0,
                 marginBottom: 0,
                 flexDirection: "row",
@@ -1214,7 +1367,7 @@ function RadarChart({
   const labelMaxWidth = 110;
 
   return (
-    <View style={{ width: size, height: size }}>
+    <View style={{ width: size, minHeight: size + 40, overflow: "visible" }}>
       <Svg width={size} height={size}>
         {/* grid */}
         {gridPolygons.map((pts, idx) => (

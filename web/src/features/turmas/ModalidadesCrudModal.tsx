@@ -8,7 +8,11 @@ type ModalidadeRow = {
   id: number | null;
   name: string;
   em_catalogo: boolean;
+  has_graduation_system: boolean;
+  skills_labels?: string[] | null;
 };
+
+const EMPTY_SKILLS: string[] = ["", "", "", "", ""];
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "response" in err) {
@@ -24,12 +28,16 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 
 type Props = {
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  /** Quando true, renderiza só o painel (sem overlay), para uso na página Faixas. */
+  embedded?: boolean;
 };
 
-export function ModalidadesCrudModal({ open, onClose }: Props) {
+export function ModalidadesCrudModal({ open, onClose, embedded = false }: Props) {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
+  const [newHasGraduation, setNewHasGraduation] = useState(true);
+  const [newSkills, setNewSkills] = useState<string[]>(() => [...EMPTY_SKILLS]);
   /** Edição de item do catálogo (id numérico). */
   const [editingCatalogId, setEditingCatalogId] = useState<number | null>(null);
   /** Nome original ao editar item só referenciado em turmas/alunos (sem id). */
@@ -37,6 +45,8 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     string | null
   >(null);
   const [editName, setEditName] = useState("");
+  const [editHasGraduation, setEditHasGraduation] = useState(true);
+  const [editSkills, setEditSkills] = useState<string[]>(() => [...EMPTY_SKILLS]);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const { data: rows, isLoading, isFetching } = useQuery({
@@ -45,46 +55,68 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
       const res = await api.get<ModalidadeRow[]>("/api/modalidades/");
       return res.data;
     },
-    enabled: open,
+    enabled: embedded || open,
     staleTime: 0,
   });
 
   useEffect(() => {
-    if (!open) {
+    if (!embedded && !open) {
       setNewName("");
+      setNewHasGraduation(true);
+      setNewSkills([...EMPTY_SKILLS]);
       setEditingCatalogId(null);
       setEditingLegacyOriginalName(null);
       setEditName("");
+      setEditHasGraduation(true);
+      setEditSkills([...EMPTY_SKILLS]);
       setFeedback(null);
     }
-  }, [open]);
+  }, [open, embedded]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["modalidades-catalog"] });
     queryClient.invalidateQueries({ queryKey: ["turmas-modalidades"] });
+    queryClient.invalidateQueries({ queryKey: ["skills", "overview"] });
+    queryClient.invalidateQueries({ queryKey: ["faixas"] });
   };
 
   const createMut = useMutation({
-    mutationFn: async (name: string) => {
-      await api.post("/api/modalidades/", { name });
+    mutationFn: async (payload: {
+      name: string;
+      has_graduation_system: boolean;
+      skills_labels?: string[] | null;
+    }) => {
+      await api.post("/api/modalidades/", payload);
     },
     onSuccess: () => {
       invalidate();
       setNewName("");
+      setNewHasGraduation(true);
+      setNewSkills([...EMPTY_SKILLS]);
       setFeedback(null);
     },
     onError: (e) => setFeedback(apiErrorMessage(e, "Erro ao criar modalidade")),
   });
 
   const updateCatalogMut = useMutation({
-    mutationFn: async (args: { id: number; name: string }) => {
-      await api.put(`/api/modalidades/${args.id}`, { name: args.name });
+    mutationFn: async (args: {
+      id: number;
+      name: string;
+      has_graduation_system: boolean;
+      skills_labels: string[] | null;
+    }) => {
+      await api.put(`/api/modalidades/${args.id}`, {
+        name: args.name,
+        has_graduation_system: args.has_graduation_system,
+        skills_labels: args.skills_labels,
+      });
     },
     onSuccess: () => {
       invalidate();
       setEditingCatalogId(null);
       setEditingLegacyOriginalName(null);
       setEditName("");
+      setEditSkills([...EMPTY_SKILLS]);
       setFeedback(null);
     },
     onError: (e) =>
@@ -135,12 +167,35 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     e.preventDefault();
     const t = newName.trim();
     if (!t) return;
-    createMut.mutate(t);
+    const parsed = newSkills.map((s) => s.trim());
+    const filled = parsed.filter(Boolean).length;
+    let skills_labels: string[] | null | undefined;
+    if (filled === 5) {
+      if (new Set(parsed.map((x) => x.toLowerCase())).size !== 5) {
+        setFeedback("As 5 habilidades do radar devem ser diferentes entre si.");
+        return;
+      }
+      skills_labels = parsed;
+    } else if (filled > 0) {
+      setFeedback("Preencha as 5 habilidades ou deixe todas vazias (usa o padrão em Habilidades).");
+      return;
+    }
+    createMut.mutate({
+      name: t,
+      has_graduation_system: newHasGraduation,
+      ...(skills_labels !== undefined ? { skills_labels } : {}),
+    });
   };
 
   const startEdit = (r: ModalidadeRow) => {
     setFeedback(null);
     setEditName(r.name);
+    setEditHasGraduation(r.has_graduation_system !== false);
+    if (r.skills_labels && r.skills_labels.length === 5) {
+      setEditSkills([...r.skills_labels]);
+    } else {
+      setEditSkills([...EMPTY_SKILLS]);
+    }
     if (r.id != null) {
       setEditingCatalogId(r.id);
       setEditingLegacyOriginalName(null);
@@ -154,6 +209,8 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     setEditingCatalogId(null);
     setEditingLegacyOriginalName(null);
     setEditName("");
+    setEditHasGraduation(true);
+    setEditSkills([...EMPTY_SKILLS]);
   };
 
   const handleSaveEdit = (e: FormEvent) => {
@@ -161,7 +218,27 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     const t = editName.trim();
     if (!t) return;
     if (editingCatalogId != null) {
-      updateCatalogMut.mutate({ id: editingCatalogId, name: t });
+      const parsed = editSkills.map((s) => s.trim());
+      const filled = parsed.filter(Boolean).length;
+      let skills_labels: string[] | null;
+      if (filled === 5) {
+        if (new Set(parsed.map((x) => x.toLowerCase())).size !== 5) {
+          setFeedback("As 5 habilidades do radar devem ser diferentes entre si.");
+          return;
+        }
+        skills_labels = parsed;
+      } else if (filled === 0) {
+        skills_labels = null;
+      } else {
+        setFeedback("Preencha as 5 habilidades ou apague todas para usar o padrão do dojo.");
+        return;
+      }
+      updateCatalogMut.mutate({
+        id: editingCatalogId,
+        name: t,
+        has_graduation_system: editHasGraduation,
+        skills_labels,
+      });
     } else if (editingLegacyOriginalName != null) {
       renamePorNomeMut.mutate({
         old_name: editingLegacyOriginalName,
@@ -194,7 +271,7 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     deleteCatalogMut.isPending ||
     deletePorNomeMut.isPending;
 
-  if (!open) return null;
+  if (!embedded && !open) return null;
 
   const overlay: CSSProperties = {
     position: "fixed",
@@ -208,52 +285,70 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
     boxSizing: "border-box",
   };
 
-  const panel: CSSProperties = {
-    backgroundColor: "#fff",
-    borderRadius: tokens.radius.lg,
-    boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
-    border: `1px solid ${tokens.color.borderSubtle}`,
-    maxWidth: 520,
-    width: "100%",
-    maxHeight: "min(85vh, 620px)",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-  };
+  const panel: CSSProperties = embedded
+    ? {
+        backgroundColor: "#fff",
+        borderRadius: tokens.radius.lg * 1.5,
+        boxShadow: "0 4px 24px rgba(15, 23, 42, 0.06)",
+        border: `1px solid ${tokens.color.borderSubtle}`,
+        maxWidth: "100%",
+        width: "100%",
+        maxHeight: "none",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }
+    : {
+        backgroundColor: "#fff",
+        borderRadius: tokens.radius.lg,
+        boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
+        border: `1px solid ${tokens.color.borderSubtle}`,
+        maxWidth: 520,
+        width: "100%",
+        maxHeight: "min(85vh, 620px)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      };
 
   const list = rows ?? [];
   const showEmpty = !isLoading && !isFetching && list.length === 0;
 
-  return (
-    <div
-      style={overlay}
-      role="presentation"
-      onClick={(ev) => {
-        if (ev.target === ev.currentTarget) onClose();
-      }}
-    >
-      <div style={panel} role="dialog" aria-modal="true" aria-labelledby="modalidades-title">
-        <div
-          style={{
-            padding: `${tokens.space.lg}px ${tokens.space.xl}px`,
-            borderBottom: `1px solid ${tokens.color.borderSubtle}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: tokens.space.md,
-          }}
-        >
+  const panelInner = (
+    <>
+      <div
+        style={{
+          padding: `${tokens.space.lg}px ${tokens.space.xl}px`,
+          borderBottom: `1px solid ${tokens.color.borderSubtle}`,
+          background: embedded
+            ? "linear-gradient(135deg, rgba(184,158,93,0.12) 0%, rgba(255,255,255,0.9) 48%, rgba(244,241,232,0.5) 100%)"
+            : undefined,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: tokens.space.md,
+        }}
+      >
+        <div>
           <h2
             id="modalidades-title"
             style={{
               margin: 0,
-              fontSize: tokens.text.lg,
-              fontWeight: 600,
+              fontSize: embedded ? tokens.text.xl : tokens.text.lg,
+              fontWeight: 700,
               color: tokens.color.textPrimary,
+              letterSpacing: embedded ? "-0.02em" : undefined,
             }}
           >
             Modalidades
           </h2>
+          {embedded ? (
+            <p style={{ margin: "6px 0 0", fontSize: tokens.text.xs, color: tokens.color.textMuted }}>
+              Catálogo do dojo, graduação no app e habilidades do radar por modalidade
+            </p>
+          ) : null}
+        </div>
+        {!embedded ? (
           <button
             type="button"
             onClick={onClose}
@@ -270,7 +365,10 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
           >
             ×
           </button>
-        </div>
+        ) : (
+          <span style={{ width: 24 }} aria-hidden />
+        )}
+      </div>
 
         <div
           style={{
@@ -299,43 +397,109 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
             onSubmit={handleCreate}
             style={{
               display: "flex",
+              flexDirection: "column",
               gap: tokens.space.sm,
-              flexWrap: "wrap",
-              alignItems: "center",
             }}
           >
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              maxLength={64}
-              placeholder="Adicionar ao catálogo"
+            <div
               style={{
-                flex: "1 1 200px",
-                minWidth: 0,
-                padding: `${tokens.space.sm}px ${tokens.space.md}px`,
-                borderRadius: tokens.radius.md,
-                border: `1px solid ${tokens.color.borderSubtle}`,
-                fontSize: tokens.text.sm,
-              }}
-            />
-            <button
-              type="submit"
-              disabled={createMut.isPending || !newName.trim()}
-              style={{
-                padding: `${tokens.space.sm}px ${tokens.space.lg}px`,
-                backgroundColor: tokens.color.primary,
-                color: tokens.color.textOnPrimary,
-                border: "none",
-                borderRadius: tokens.radius.md,
-                fontWeight: 600,
-                fontSize: tokens.text.sm,
-                cursor: createMut.isPending ? "not-allowed" : "pointer",
-                opacity: createMut.isPending ? 0.7 : 1,
+                display: "flex",
+                gap: tokens.space.sm,
+                flexWrap: "wrap",
+                alignItems: "center",
               }}
             >
-              Adicionar
-            </button>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                maxLength={64}
+                placeholder="Adicionar ao catálogo"
+                style={{
+                  flex: "1 1 200px",
+                  minWidth: 0,
+                  padding: `${tokens.space.sm}px ${tokens.space.md}px`,
+                  borderRadius: tokens.radius.md,
+                  border: `1px solid ${tokens.color.borderSubtle}`,
+                  fontSize: tokens.text.sm,
+                }}
+              />
+              <button
+                type="submit"
+                disabled={createMut.isPending || !newName.trim()}
+                style={{
+                  padding: `${tokens.space.sm}px ${tokens.space.lg}px`,
+                  backgroundColor: tokens.color.primary,
+                  color: tokens.color.textOnPrimary,
+                  border: "none",
+                  borderRadius: tokens.radius.md,
+                  fontWeight: 600,
+                  fontSize: tokens.text.sm,
+                  cursor: createMut.isPending ? "not-allowed" : "pointer",
+                  opacity: createMut.isPending ? 0.7 : 1,
+                }}
+              >
+                Adicionar
+              </button>
+            </div>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: tokens.space.sm,
+                fontSize: tokens.text.sm,
+                color: tokens.color.textPrimary,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={newHasGraduation}
+                onChange={(e) => setNewHasGraduation(e.target.checked)}
+              />
+              Possui sistema de graduação (faixa e graus no perfil do aluno)
+            </label>
+            <p
+              style={{
+                margin: 0,
+                fontSize: tokens.text.xs,
+                color: tokens.color.textMuted,
+                lineHeight: 1.45,
+              }}
+            >
+              <strong>Habilidades do radar (opcional):</strong> cinco nomes únicos para o gráfico de
+              habilidades desta modalidade. Vazio = usa o padrão configurado em{" "}
+              <strong>Habilidades</strong> no menu.
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {newSkills.map((v, idx) => (
+                <input
+                  key={idx}
+                  type="text"
+                  value={v}
+                  maxLength={64}
+                  placeholder={`Habilidade ${idx + 1}`}
+                  onChange={(e) => {
+                    const next = [...newSkills];
+                    next[idx] = e.target.value;
+                    setNewSkills(next);
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: tokens.radius.md,
+                    border: `1px solid ${tokens.color.borderSubtle}`,
+                    fontSize: tokens.text.sm,
+                    boxSizing: "border-box",
+                  }}
+                />
+              ))}
+            </div>
           </form>
 
           {feedback ? (
@@ -423,6 +587,81 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
                             boxSizing: "border-box",
                           }}
                         />
+                        {editingCatalogId != null ? (
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: tokens.space.sm,
+                              fontSize: tokens.text.sm,
+                              color: tokens.color.textPrimary,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={editHasGraduation}
+                              onChange={(e) => setEditHasGraduation(e.target.checked)}
+                            />
+                            Sistema de graduação (faixa e graus no app)
+                          </label>
+                        ) : (
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: tokens.text.xs,
+                              color: tokens.color.textMuted,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            Itens só em turmas/alunos: ao cadastrar no catálogo você poderá marcar se há
+                            graduação.
+                          </p>
+                        )}
+                        {editingCatalogId != null ? (
+                          <>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: tokens.text.xs,
+                                color: tokens.color.textMuted,
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              Habilidades do radar: cinco nomes únicos, ou vazio para o padrão do dojo.
+                              Limpar todos os campos remove a personalização.
+                            </p>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                                gap: 8,
+                              }}
+                            >
+                              {editSkills.map((v, idx) => (
+                                <input
+                                  key={idx}
+                                  type="text"
+                                  value={v}
+                                  maxLength={64}
+                                  placeholder={`Habilidade ${idx + 1}`}
+                                  onChange={(e) => {
+                                    const next = [...editSkills];
+                                    next[idx] = e.target.value;
+                                    setEditSkills(next);
+                                  }}
+                                  style={{
+                                    padding: "8px 10px",
+                                    borderRadius: tokens.radius.md,
+                                    border: `1px solid ${tokens.color.borderSubtle}`,
+                                    fontSize: tokens.text.sm,
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </>
+                        ) : null}
                         <div style={{ display: "flex", gap: tokens.space.sm, flexWrap: "wrap" }}>
                           <button
                             type="submit"
@@ -489,19 +728,40 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
                             {r.name}
                           </span>
                           {r.em_catalogo ? (
-                            <span
-                              style={{
-                                fontSize: tokens.text.xs,
-                                fontWeight: 600,
-                                color: tokens.color.primaryDark,
-                                alignSelf: "flex-start",
-                                padding: `2px ${tokens.space.sm}px`,
-                                borderRadius: tokens.radius.full,
-                                backgroundColor: `${tokens.color.primary}22`,
-                              }}
-                            >
-                              No catálogo
-                            </span>
+                            <>
+                              <span
+                                style={{
+                                  fontSize: tokens.text.xs,
+                                  fontWeight: 600,
+                                  color: tokens.color.primaryDark,
+                                  alignSelf: "flex-start",
+                                  padding: `2px ${tokens.space.sm}px`,
+                                  borderRadius: tokens.radius.full,
+                                  backgroundColor: `${tokens.color.primary}22`,
+                                }}
+                              >
+                                No catálogo
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: tokens.text.xs,
+                                  color: tokens.color.textMuted,
+                                }}
+                              >
+                                Graduação no app: {r.has_graduation_system ? "sim" : "não"}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: tokens.text.xs,
+                                  color: tokens.color.textMuted,
+                                }}
+                              >
+                                Radar:{" "}
+                                {r.skills_labels && r.skills_labels.length === 5
+                                  ? "5 habilidades próprias"
+                                  : "padrão do dojo"}
+                              </span>
+                            </>
                           ) : (
                             <span
                               style={{
@@ -561,6 +821,27 @@ export function ModalidadesCrudModal({ open, onClose }: Props) {
             </div>
           ) : null}
         </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div style={panel} role="region" aria-labelledby="modalidades-title">
+        {panelInner}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={overlay}
+      role="presentation"
+      onClick={(ev) => {
+        if (ev.target === ev.currentTarget) onClose?.();
+      }}
+    >
+      <div style={panel} role="dialog" aria-modal="true" aria-labelledby="modalidades-title">
+        {panelInner}
       </div>
     </div>
   );

@@ -20,6 +20,100 @@ from app.models.user import User
 from app.modules.finance import schemas
 
 
+def _norm_modalidade(value: str | None) -> str | None:
+    if value is None:
+        return None
+    t = value.strip()
+    return t or None
+
+
+def _norm_modalidades_list(values: list[str] | None) -> list[str] | None:
+    if values is None:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for x in values:
+        t = str(x).strip()
+        if not t:
+            continue
+        k = t.casefold()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+    return out or None
+
+
+def _plan_targets_modalities(plan: Plan) -> list[str] | None:
+    raw = getattr(plan, "modalidades", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return None
+    cleaned = [str(x).strip() for x in raw if str(x).strip()]
+    return cleaned or None
+
+
+def plan_restricted_modalidades(plan: Plan) -> list[str] | None:
+    """Modalidades às quais o plano se restringe; None = sem restrição (qualquer modalidade)."""
+    return _plan_targets_modalities(plan)
+
+
+def plan_matches_student_modalidade(
+    plan: Plan,
+    student_modalidade: str | None,
+) -> bool:
+    """
+    Plano sem restrição (modalidades vazias/nulas) = válido para qualquer aluno.
+    Caso contrário, a modalidade do aluno deve estar na lista (case-insensitive).
+    """
+    targets = _plan_targets_modalities(plan)
+    stud_mod = _norm_modalidade(student_modalidade)
+    if targets is None:
+        return True
+    if stud_mod is None:
+        return False
+    return any(stud_mod.casefold() == t.casefold() for t in targets)
+
+
+async def assert_plan_allowed_for_modalidade(
+    session: AsyncSession,
+    dojo_id: int,
+    plan_id: int,
+    student_modalidade: str | None,
+) -> Plan:
+    plan = await _get_plan_for_dojo(session, dojo_id, plan_id)
+    if plan is None:
+        raise ValueError("Plano inválido ou inativo para este dojo")
+    if not plan_matches_student_modalidade(plan, student_modalidade):
+        raise ValueError("Plano não está disponível para a modalidade selecionada")
+    return plan
+
+
+async def first_matching_active_plan_id(
+    session: AsyncSession,
+    dojo_id: int,
+    student_modalidade: str | None,
+) -> int | None:
+    """Primeiro plano ativo compatível com a modalidade do aluno (por ID)."""
+    for p in await list_active_plans(session, dojo_id):
+        if plan_matches_student_modalidade(p, student_modalidade):
+            return p.id
+    return None
+
+
+async def list_active_plans_for_student(
+    session: AsyncSession,
+    dojo_id: int,
+    student_modalidade: str | None,
+) -> list[Plan]:
+    return [
+        p
+        for p in await list_active_plans(session, dojo_id)
+        if plan_matches_student_modalidade(p, student_modalidade)
+    ]
+
+
 def _plans_query(dojo_id: int) -> Select[tuple[Plan]]:
     return select(Plan).where(Plan.dojo_id == dojo_id).order_by(Plan.id)
 
@@ -48,6 +142,7 @@ async def create_plan(
         dojo_id=dojo_id,
         name=data.name,
         description=data.description,
+        modalidades=_norm_modalidades_list(data.modalidades),
         price=data.price,
         credits_total=data.credits_total,
         validity_days=data.validity_days,
@@ -73,6 +168,8 @@ async def update_plan(
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    if "modalidades" in update_data:
+        update_data["modalidades"] = _norm_modalidades_list(update_data["modalidades"])
     for field, value in update_data.items():
         setattr(plan, field, value)
 
@@ -136,6 +233,9 @@ async def create_student_subscription(
     plan = await _get_plan_for_dojo(session, dojo_id, data.plan_id)
     if plan is None:
         raise ValueError("Plano inválido para este dojo")
+
+    if not plan_matches_student_modalidade(plan, student.modalidade):
+        raise ValueError("Este plano não está disponível para a modalidade do aluno")
 
     # Garante que o aluno não tenha mais de um plano ativo ou pendente.
     existing_result = await session.execute(
@@ -329,6 +429,33 @@ async def get_active_subscription_for_student(
             )
         )
         .order_by(StudentSubscription.start_date)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_subscription_for_modalidade_resolution(
+    session: AsyncSession,
+    dojo_id: int,
+    student_id: int,
+    today: date | None = None,
+) -> StudentSubscription | None:
+    """Assinatura ativa (vigente) ou, se não houver, a mais recente pendente de pagamento."""
+    active = await get_active_subscription_for_student(
+        session, dojo_id, student_id, today=today
+    )
+    if active is not None:
+        return active
+    result = await session.execute(
+        select(StudentSubscription)
+        .where(
+            and_(
+                StudentSubscription.dojo_id == dojo_id,
+                StudentSubscription.student_id == student_id,
+                StudentSubscription.status == StudentSubscriptionStatus.PENDING_PAYMENT,
+            )
+        )
+        .order_by(StudentSubscription.id.desc())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 

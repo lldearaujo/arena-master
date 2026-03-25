@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
 import { useAuthStore } from "../../store/auth";
@@ -199,6 +199,9 @@ function SuperAdminDashboard() {
 
 function AdminDashboard() {
   const user = useAuthStore((s) => s.user);
+  const [isSmallScreen, setIsSmallScreen] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 960px)").matches : false
+  );
 
   const [matriculaLink, setMatriculaLink] = useState<string | null>(null);
   const [matriculaError, setMatriculaError] = useState<string | null>(null);
@@ -264,6 +267,16 @@ function AdminDashboard() {
     (c) => new Date(c.occurred_at).toISOString().slice(0, 10) === todayStr
   ).length;
   const recentCheckins = (checkins ?? []).slice(0, 8);
+  const studentNameById = new Map((students ?? []).map((student) => [student.id, student.name]));
+  const turmaNameById = new Map((turmas ?? []).map((turma) => [turma.id, turma.name]));
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 960px)");
+    const onChange = () => setIsSmallScreen(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -363,7 +376,7 @@ function AdminDashboard() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: isSmallScreen ? "1fr" : "1fr 1fr",
           gap: tokens.space.lg,
           marginBottom: tokens.space.lg,
         }}
@@ -387,7 +400,8 @@ function AdminDashboard() {
                     fontSize: tokens.text.sm,
                   }}
                 >
-                  Aluno #{c.student_id} · Turma #{c.turma_id} ·{" "}
+                  {studentNameById.get(c.student_id) ?? `Aluno #${c.student_id}`} ·{" "}
+                  {turmaNameById.get(c.turma_id) ?? `Turma #${c.turma_id}`} ·{" "}
                   {new Date(c.occurred_at).toLocaleString("pt-BR")}
                 </li>
               ))}

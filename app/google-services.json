@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "951547550361",
+    "project_id": "arena-master-4c0ea",
+    "storage_bucket": "arena-master-4c0ea.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:951547550361:android:d73ca605c3847d98dfb608",
+        "android_client_info": {
+          "package_name": "com.lldearaujo.arenamaster"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCT12b8Wr4z7kn3UnSFUW_vokKhj2meBVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

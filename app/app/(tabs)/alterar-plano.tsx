@@ -21,6 +21,7 @@ type Plan = {
   dojo_id: number;
   name: string;
   description: string | null;
+  modalidades?: string[] | null;
   price: number;
   credits_total: number;
   validity_days: number;

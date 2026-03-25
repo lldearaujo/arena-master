@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -55,6 +55,10 @@ export function AppShell({ children }: AppShellProps) {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
   const location = useLocation();
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false
+  );
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const { data: dojo } = useQuery({
     queryKey: ["dojo", "me"],
@@ -69,6 +73,25 @@ export function AppShell({ children }: AppShellProps) {
 
   const sidebarWidth = 240;
   const contentGap = 24;
+  const headerHeight = 56;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1024px)");
+    const onChange = () => {
+      const mobile = media.matches;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsSidebarOpen(false);
+      }
+    };
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   return (
     <div
@@ -78,6 +101,60 @@ export function AppShell({ children }: AppShellProps) {
         minHeight: "100vh",
       }}
     >
+      <style>{`
+        .am-admin-main {
+          overflow-x: hidden;
+        }
+        .am-admin-main img,
+        .am-admin-main svg,
+        .am-admin-main video,
+        .am-admin-main canvas {
+          max-width: 100%;
+          height: auto;
+        }
+        .am-admin-main table {
+          width: 100%;
+        }
+        .am-admin-main input,
+        .am-admin-main select,
+        .am-admin-main textarea,
+        .am-admin-main button {
+          max-width: 100%;
+        }
+        @media (max-width: 1024px) {
+          .am-admin-main [style*="grid-template-columns: 1fr 1fr"],
+          .am-admin-main [style*="grid-template-columns:2fr 1.5fr"],
+          .am-admin-main [style*="grid-template-columns: 2fr 1.5fr"],
+          .am-admin-main [style*="grid-template-columns:2fr 1fr 1fr 1fr auto"],
+          .am-admin-main [style*="grid-template-columns: 2fr 1fr 1fr 1fr auto"] {
+            grid-template-columns: 1fr !important;
+          }
+          .am-admin-main [style*="min-width: 220px"],
+          .am-admin-main [style*="min-width: 260px"],
+          .am-admin-main [style*="min-width: 280px"],
+          .am-admin-main [style*="min-width: 320px"] {
+            min-width: 0 !important;
+          }
+          .am-admin-main table {
+            min-width: max-content;
+          }
+        }
+      `}</style>
+      {isMobile && isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          onClick={() => setIsSidebarOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 35,
+            border: "none",
+            background: "rgba(15, 23, 42, 0.4)",
+            cursor: "pointer",
+          }}
+        />
+      )}
       <aside
         style={{
           position: "fixed",
@@ -92,6 +169,9 @@ export function AppShell({ children }: AppShellProps) {
           flexDirection: "column",
           boxShadow: "4px 0 24px rgba(0,0,0,0.12)",
           borderRight: `1px solid ${tokens.color.borderStrong}`,
+          zIndex: 40,
+          transform: isMobile ? (isSidebarOpen ? "translateX(0)" : "translateX(-110%)") : "translateX(0)",
+          transition: "transform 0.2s ease",
         }}
       >
         {user?.role === "admin" && (
@@ -285,7 +365,7 @@ export function AppShell({ children }: AppShellProps) {
           {user?.role === "admin" && (
             <>
               {[
-                { to: "/faixas", label: "Faixas" },
+                { to: "/faixas", label: "Faixas & modalidades" },
                 { to: "/mural", label: "Mural" },
                 { to: "/students", label: "Alunos" },
                 { to: "/habilidades", label: "Habilidades" },
@@ -338,7 +418,7 @@ export function AppShell({ children }: AppShellProps) {
       </aside>
       <div
         style={{
-          marginLeft: sidebarWidth + contentGap,
+          marginLeft: isMobile ? 0 : sidebarWidth + contentGap,
           minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
@@ -347,16 +427,40 @@ export function AppShell({ children }: AppShellProps) {
         <header
           style={{
             flexShrink: 0,
-            height: 56,
+            height: headerHeight,
             borderBottom: `1px solid ${tokens.color.borderSubtle}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 24px",
+            padding: isMobile ? "0 12px" : "0 24px",
             backgroundColor: "white",
+            position: isMobile ? "sticky" : "static",
+            top: 0,
+            zIndex: 30,
           }}
         >
-          <div style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            {isMobile && (
+              <button
+                type="button"
+                aria-label="Abrir menu"
+                onClick={() => setIsSidebarOpen(true)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: tokens.radius.md,
+                  border: `1px solid ${tokens.color.borderSubtle}`,
+                  backgroundColor: "white",
+                  color: tokens.color.textPrimary,
+                  cursor: "pointer",
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+              >
+                ☰
+              </button>
+            )}
+            <div style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {user ? (
               <>
                 Logado como <strong>{user.email}</strong> ({user.role})
@@ -364,6 +468,7 @@ export function AppShell({ children }: AppShellProps) {
             ) : (
               "Não autenticado"
             )}
+            </div>
           </div>
           {user && (
             <button
@@ -383,10 +488,11 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </header>
         <main
+          className="am-admin-main"
           style={{
             flex: 1,
-            padding: tokens.space.lg,
-            paddingLeft: tokens.space.xl * 2,
+            padding: isMobile ? tokens.space.md : tokens.space.lg,
+            paddingLeft: isMobile ? tokens.space.md : tokens.space.xl * 2,
             backgroundColor: "#f9fafb",
             overflow: "auto",
           }}

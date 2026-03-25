@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
@@ -83,6 +83,10 @@ function formatDays(dayOfWeek: string) {
 
 export function TurmasPage() {
   const queryClient = useQueryClient();
+  const [isCompactList, setIsCompactList] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
+  );
+  const [isFormCollapsed, setIsFormCollapsed] = useState(true);
   const { data, isLoading, error } = useQuery({
     queryKey: ["turmas"],
     queryFn: async () => {
@@ -160,6 +164,7 @@ export function TurmasPage() {
 
   const startEdit = (turma: Turma) => {
     setEditingId(turma.id);
+    setIsFormCollapsed(false);
     const days = turma.day_of_week
       .split(",")
       .map((d) => d.trim())
@@ -204,6 +209,14 @@ export function TurmasPage() {
   const modalidadeTrimmed = form.modalidade.trim();
   const modalidadeSelectValue =
     modalidadeTrimmed === "" ? "" : modalidadeTrimmed;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 980px)");
+    const onChange = () => setIsCompactList(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   const btnPrimary: CSSProperties = {
     padding: `${tokens.space.sm}px ${tokens.space.lg}px`,
@@ -346,38 +359,87 @@ export function TurmasPage() {
             marginBottom: tokens.space.lg,
             paddingBottom: tokens.space.md,
             borderBottom: `1px solid ${tokens.color.borderSubtle}`,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: tokens.space.md,
           }}
         >
-          <h2
+          <div>
+            <h2
+              style={{
+                fontSize: tokens.text.lg,
+                fontWeight: 600,
+                color: tokens.color.textPrimary,
+                margin: 0,
+              }}
+            >
+              {editingId ? "Editar turma" : "Nova turma"}
+            </h2>
+            <p
+              style={{
+                margin: `${tokens.space.xs}px 0 0`,
+                fontSize: tokens.text.sm,
+                color: tokens.color.textMuted,
+              }}
+            >
+              {editingId
+                ? "Ajuste os dados e salve para atualizar a turma."
+                : "Preencha os campos abaixo para criar uma nova turma no dojo."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFormCollapsed((current) => !current)}
             style={{
-              fontSize: tokens.text.lg,
-              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 40,
+              height: 40,
+              flexShrink: 0,
+              padding: 0,
+              backgroundColor: "#fff",
               color: tokens.color.textPrimary,
-              margin: 0,
+              borderRadius: tokens.radius.md,
+              border: `1px solid ${tokens.color.borderSubtle}`,
+              cursor: "pointer",
             }}
+            aria-expanded={!isFormCollapsed}
+            aria-label={
+              isFormCollapsed
+                ? "Expandir formulário de turma"
+                : "Recolher formulário de turma"
+            }
           >
-            {editingId ? "Editar turma" : "Nova turma"}
-          </h2>
-          <p
-            style={{
-              margin: `${tokens.space.xs}px 0 0`,
-              fontSize: tokens.text.sm,
-              color: tokens.color.textMuted,
-            }}
-          >
-            {editingId
-              ? "Ajuste os dados e salve para atualizar a turma."
-              : "Preencha os campos abaixo para criar uma nova turma no dojo."}
-          </p>
+            <svg
+              width={22}
+              height={22}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              {isFormCollapsed ? (
+                <path d="M6 9l6 6 6-6" />
+              ) : (
+                <path d="M18 15l-6-6-6 6" />
+              )}
+            </svg>
+          </button>
         </div>
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: tokens.space.lg,
-          }}
-        >
+        {!isFormCollapsed && (
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+              gap: tokens.space.lg,
+            }}
+          >
           <label
             style={{
               gridColumn: "1 / -1",
@@ -721,7 +783,8 @@ export function TurmasPage() {
               </button>
             )}
           </div>
-        </form>
+          </form>
+        )}
       </section>
 
       {isLoading && (
@@ -782,20 +845,21 @@ export function TurmasPage() {
         <section style={cardStyle}>
           <div
             style={{
-              marginBottom: tokens.space.lg,
+              marginBottom: isCompactList ? tokens.space.md : tokens.space.lg,
               display: "flex",
               flexWrap: "wrap",
-              alignItems: "baseline",
+              alignItems: "center",
               justifyContent: "space-between",
               gap: tokens.space.md,
             }}
           >
             <h2
               style={{
-                fontSize: tokens.text.lg,
-                fontWeight: 600,
+                fontSize: isCompactList ? tokens.text.md : tokens.text.lg,
+                fontWeight: 700,
                 color: tokens.color.textPrimary,
                 margin: 0,
+                letterSpacing: isCompactList ? "-0.02em" : undefined,
               }}
             >
               Turmas cadastradas
@@ -803,41 +867,274 @@ export function TurmasPage() {
             <span
               style={{
                 fontSize: tokens.text.xs,
-                color: tokens.color.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
                 fontWeight: 600,
+                ...(isCompactList
+                  ? {
+                      color: tokens.color.primaryDark,
+                      padding: "6px 12px",
+                      borderRadius: tokens.radius.full,
+                      backgroundColor: "rgba(184, 158, 93, 0.14)",
+                      border: "1px solid rgba(140, 116, 64, 0.22)",
+                    }
+                  : {
+                      color: tokens.color.textMuted,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }),
               }}
             >
               {totalCount} {totalCount === 1 ? "registro" : "registros"}
             </span>
           </div>
-          <div style={{ overflowX: "auto", margin: `0 -${tokens.space.sm}px` }}>
-            <table
+          {isCompactList ? (
+            <div
               style={{
-                width: "100%",
-                minWidth: 840,
-                borderCollapse: "collapse",
-                fontSize: tokens.text.sm,
+                display: "flex",
+                flexDirection: "column",
+                gap: tokens.space.md,
+                paddingTop: 2,
               }}
             >
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: `${tokens.color.borderSubtle}55`,
-                  }}
-                >
-                  {[
-                    "Turma",
-                    "Modalidade",
-                    "Dias",
-                    "Horário",
-                    "Cap.",
-                    "Tipo",
-                    "Status",
-                    "",
-                  ].map(
-                    (h) => (
+              {data.map((turma) => {
+                const modalidadeLine = turma.modalidade?.trim()
+                  ? turma.modalidade
+                  : null;
+                const daysLine = formatDays(turma.day_of_week);
+                const metaSubtitle = [modalidadeLine, daysLine]
+                  .filter(Boolean)
+                  .join(" · ");
+                const tipoPillStyle: CSSProperties = {
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "3px 10px",
+                  borderRadius: tokens.radius.full,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.02em",
+                  backgroundColor:
+                    turma.tipo === "kids"
+                      ? "rgba(250, 204, 21, 0.22)"
+                      : "rgba(184, 158, 93, 0.18)",
+                  color:
+                    turma.tipo === "kids" ? "#854d0e" : tokens.color.primaryDark,
+                  border:
+                    turma.tipo === "kids"
+                      ? "1px solid rgba(180, 140, 20, 0.28)"
+                      : "1px solid rgba(140, 116, 64, 0.22)",
+                };
+                return (
+                  <article
+                    key={turma.id}
+                    style={{
+                      borderRadius: tokens.radius.lg,
+                      padding: `${tokens.space.md + 2}px ${tokens.space.lg}px`,
+                      backgroundColor: "#fff",
+                      boxShadow: turma.active
+                        ? "0 1px 0 rgba(27, 48, 63, 0.05), 0 10px 28px rgba(27, 48, 63, 0.07)"
+                        : "0 1px 0 rgba(27, 48, 63, 0.04), 0 6px 20px rgba(27, 48, 63, 0.05)",
+                      border: `1px solid ${tokens.color.borderSubtle}`,
+                      borderLeftWidth: turma.active ? 1 : 3,
+                      borderLeftColor: turma.active
+                        ? tokens.color.borderSubtle
+                        : "#94a3b8",
+                      boxSizing: "border-box",
+                      opacity: turma.active ? 1 : 0.94,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: tokens.space.md,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: tokens.text.md,
+                          fontWeight: 700,
+                          color: tokens.color.textPrimary,
+                          lineHeight: 1.3,
+                          letterSpacing: "-0.02em",
+                          minWidth: 0,
+                          flex: 1,
+                        }}
+                      >
+                        {turma.name}
+                      </h3>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "5px 11px",
+                          borderRadius: tokens.radius.full,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          backgroundColor: turma.active
+                            ? "rgba(34, 197, 94, 0.11)"
+                            : "rgba(107, 114, 128, 0.1)",
+                          color: turma.active ? "#166534" : "#4b5563",
+                          border: `1px solid ${
+                            turma.active
+                              ? "rgba(34, 197, 94, 0.28)"
+                              : "rgba(107, 114, 128, 0.22)"
+                          }`,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            backgroundColor: turma.active
+                              ? tokens.color.success
+                              : tokens.color.borderSubtle,
+                          }}
+                        />
+                        {turma.active ? "Ativa" : "Inativa"}
+                      </span>
+                    </div>
+                    {metaSubtitle ? (
+                      <p
+                        style={{
+                          margin: `${tokens.space.sm}px 0 0`,
+                          fontSize: tokens.text.sm,
+                          color: tokens.color.textMuted,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {metaSubtitle}
+                      </p>
+                    ) : null}
+                    <div
+                      style={{
+                        marginTop: tokens.space.sm,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        columnGap: tokens.space.md,
+                        rowGap: tokens.space.xs,
+                        fontSize: tokens.text.sm,
+                        color: tokens.color.textPrimary,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontVariantNumeric: "tabular-nums",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {turma.start_time.slice(0, 5)} –{" "}
+                        {turma.end_time.slice(0, 5)}
+                      </span>
+                      <span
+                        style={{
+                          width: 4,
+                          height: 4,
+                          borderRadius: "50%",
+                          backgroundColor: tokens.color.borderSubtle,
+                          flexShrink: 0,
+                        }}
+                        aria-hidden
+                      />
+                      <span style={{ color: tokens.color.textMuted }}>
+                        até {turma.capacity}{" "}
+                        {turma.capacity === 1 ? "aluno" : "alunos"}
+                      </span>
+                      <span style={tipoPillStyle}>
+                        {turma.tipo === "kids" ? "KIDS" : "Regular"}
+                      </span>
+                    </div>
+                    {turma.description ? (
+                      <p
+                        style={{
+                          margin: `${tokens.space.sm}px 0 0`,
+                          fontSize: tokens.text.xs,
+                          color: tokens.color.textMuted,
+                          lineHeight: 1.45,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical" as const,
+                          overflow: "hidden",
+                        }}
+                      >
+                        {turma.description}
+                      </p>
+                    ) : null}
+                    <div
+                      style={{
+                        marginTop: tokens.space.md,
+                        paddingTop: tokens.space.md,
+                        borderTop: `1px solid ${tokens.color.borderSubtle}`,
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: tokens.space.sm,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => startEdit(turma)}
+                        style={{
+                          ...btnSecondary,
+                          minHeight: 46,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 600,
+                          borderRadius: tokens.radius.md,
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteMutation.mutate(turma.id)}
+                        style={{
+                          ...btnDanger,
+                          minHeight: 46,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 600,
+                          borderRadius: tokens.radius.md,
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto", margin: `0 -${tokens.space.sm}px` }}>
+              <table
+                style={{
+                  width: "100%",
+                  minWidth: 840,
+                  borderCollapse: "collapse",
+                  fontSize: tokens.text.sm,
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      backgroundColor: `${tokens.color.borderSubtle}55`,
+                    }}
+                  >
+                    {[
+                      "Turma",
+                      "Modalidade",
+                      "Dias",
+                      "Horário",
+                      "Cap.",
+                      "Tipo",
+                      "Status",
+                      "",
+                    ].map((h) => (
                       <th
                         key={h || "actions"}
                         style={{
@@ -853,21 +1150,20 @@ export function TurmasPage() {
                       >
                         {h}
                       </th>
-                    ),
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((turma) => (
-                  <tr
-                    key={turma.id}
-                    style={{
-                      backgroundColor: turma.active
-                        ? "transparent"
-                        : `${tokens.color.borderSubtle}33`,
-                      borderBottom: `1px solid ${tokens.color.borderSubtle}`,
-                    }}
-                  >
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((turma) => (
+                    <tr
+                      key={turma.id}
+                      style={{
+                        backgroundColor: turma.active
+                          ? "transparent"
+                          : `${tokens.color.borderSubtle}33`,
+                        borderBottom: `1px solid ${tokens.color.borderSubtle}`,
+                      }}
+                    >
                       <td
                         style={{
                           padding: `${tokens.space.lg}px`,
@@ -900,9 +1196,7 @@ export function TurmasPage() {
                           maxWidth: 140,
                         }}
                       >
-                        {turma.modalidade?.trim()
-                          ? turma.modalidade
-                          : "—"}
+                        {turma.modalidade?.trim() ? turma.modalidade : "—"}
                       </td>
                       <td
                         style={{
@@ -1018,10 +1312,11 @@ export function TurmasPage() {
                         </button>
                       </td>
                     </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
     </div>

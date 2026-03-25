@@ -13,6 +13,8 @@ from app.models.finance import (
 class PlanBase(BaseModel):
     name: str
     description: str | None = None
+    # Vazio/null = plano para qualquer modalidade; uma ou mais = restrito a essas modalidades
+    modalidades: list[str] | None = None
     price: float = Field(gt=0)
     credits_total: int = Field(gt=0)
     validity_days: int = Field(default=30, gt=0)
@@ -25,6 +27,7 @@ class PlanCreate(PlanBase):
 class PlanUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    modalidades: list[str] | None = None
     price: float | None = Field(default=None, gt=0)
     credits_total: int | None = Field(default=None, gt=0)
     validity_days: int | None = Field(default=None, gt=0)

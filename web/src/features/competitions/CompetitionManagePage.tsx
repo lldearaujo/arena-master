@@ -844,6 +844,17 @@ export function CompetitionManagePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["comp-ad", competitionId] }),
   });
 
+  const delAd = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/api/competitions/${competitionId}/age-divisions/${id}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["comp-ad", competitionId] });
+      qc.invalidateQueries({ queryKey: ["comp-wc", competitionId] });
+      qc.invalidateQueries({ queryKey: ["comp-belt", competitionId] });
+    },
+  });
+
   const addWc = useMutation({
     mutationFn: async () => {
       if (wcAd === "") return;
@@ -858,6 +869,13 @@ export function CompetitionManagePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["comp-wc", competitionId] }),
   });
 
+  const delWc = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/api/competitions/${competitionId}/weight-classes/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["comp-wc", competitionId] }),
+  });
+
   const addBelt = useMutation({
     mutationFn: async () => {
       if (beltAd === "" || beltFaixa === "") return;
@@ -866,6 +884,13 @@ export function CompetitionManagePage() {
         gender: beltGender,
         faixa_id: beltFaixa,
       });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["comp-belt", competitionId] }),
+  });
+
+  const delBelt = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/api/competitions/${competitionId}/belt-eligibility/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["comp-belt", competitionId] }),
   });
@@ -1358,10 +1383,19 @@ export function CompetitionManagePage() {
             Adicionar
           </button>
         </div>
-        <ul>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {(divisions ?? []).map((d) => (
-            <li key={d.id}>
-              {d.label} ({d.birth_year_min}–{d.birth_year_max})
+            <li key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${tokens.color.borderSubtle}` }}>
+              <span style={{ flex: 1 }}>{d.label} ({d.birth_year_min}–{d.birth_year_max})</span>
+              <button
+                type="button"
+                onClick={() => delAd.mutate(d.id)}
+                disabled={delAd.isPending}
+                style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.danger ?? "#ef4444", fontSize: 18, lineHeight: 1, padding: "0 4px" }}
+                title="Remover divisão"
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>
@@ -1391,11 +1425,22 @@ export function CompetitionManagePage() {
             Adicionar
           </button>
         </div>
-        <ul>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {(weights ?? []).map((w) => (
-            <li key={w.id}>
-              [{w.modality ?? "gi"}] {w.label}
-              {w.weight_interval_label ? ` — ${w.weight_interval_label}` : ""} — {w.gender} (div {w.age_division_id})
+            <li key={w.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${tokens.color.borderSubtle}` }}>
+              <span style={{ flex: 1 }}>
+                [{w.modality ?? "gi"}] {w.label}
+                {w.weight_interval_label ? ` — ${w.weight_interval_label}` : ""} — {w.gender} (div {w.age_division_id})
+              </span>
+              <button
+                type="button"
+                onClick={() => delWc.mutate(w.id)}
+                disabled={delWc.isPending}
+                style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.danger ?? "#ef4444", fontSize: 18, lineHeight: 1, padding: "0 4px" }}
+                title="Remover categoria"
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>
@@ -1427,6 +1472,26 @@ export function CompetitionManagePage() {
             Adicionar
           </button>
         </div>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {(belts ?? []).map((b) => {
+            const divLabel = (divisions ?? []).find((d) => d.id === b.age_division_id)?.label ?? `Div ${b.age_division_id}`;
+            const faixaLabel = (faixas ?? []).find((f) => f.id === b.faixa_id)?.name ?? `Faixa ${b.faixa_id}`;
+            return (
+              <li key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${tokens.color.borderSubtle}` }}>
+                <span style={{ flex: 1 }}>{faixaLabel} — {b.gender === "male" ? "Masc" : "Fem"} — {divLabel}</span>
+                <button
+                  type="button"
+                  onClick={() => delBelt.mutate(b.id)}
+                  disabled={delBelt.isPending}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.danger ?? "#ef4444", fontSize: 18, lineHeight: 1, padding: "0 4px" }}
+                  title="Remover faixa"
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </Section>
         </>
       )}

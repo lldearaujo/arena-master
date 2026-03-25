@@ -155,5 +155,21 @@ async def init_models() -> None:
                     """
                 )
             )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE dojo_modalidades
+                    ADD COLUMN IF NOT EXISTS has_graduation_system BOOLEAN NOT NULL DEFAULT true
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE dojo_modalidades
+                    ADD COLUMN IF NOT EXISTS skills_labels JSONB
+                    """
+                )
+            )
 
 

@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AxiosError } from "axios";
 
@@ -351,6 +351,8 @@ const ui = {
 type Faixa = {
   id: number;
   dojo_id: number;
+  modalidade_id: number;
+  modalidade_name: string;
   name: string;
   ordem: number;
   max_graus: number;
@@ -384,6 +386,7 @@ type Plan = {
   dojo_id: number;
   name: string;
   description?: string | null;
+  modalidades?: string[] | null;
   price: number;
   credits_total: number;
   validity_days: number;
@@ -427,6 +430,9 @@ type StudentPasswordResetResponse = {
 
 export function StudentsPage() {
   const queryClient = useQueryClient();
+  const [isCompactList, setIsCompactList] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false
+  );
   const { data, isPending, isFetching, error } = useQuery({
     queryKey: ["students"],
     queryFn: async () => {
@@ -451,6 +457,14 @@ export function StudentsPage() {
     queryKey: ["faixas"],
     queryFn: async () => {
       const res = await api.get<Faixa[]>("/api/faixas");
+      return res.data;
+    },
+  });
+
+  const { data: modalidadesApi } = useQuery({
+    queryKey: ["turmas-modalidades"],
+    queryFn: async () => {
+      const res = await api.get<string[]>("/api/turmas/modalidades");
       return res.data;
     },
   });
@@ -490,10 +504,39 @@ export function StudentsPage() {
   const [filterModalidade, setFilterModalidade] = useState<string>("all");
   const [filterFaixaId, setFilterFaixaId] = useState<string>("all");
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 980px)");
+    const onChange = () => setIsCompactList(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
   const activePlans = useMemo(
     () => (plans ?? []).filter((p) => p.active),
     [plans],
   );
+
+  const plansForSelectedStudent = useMemo(() => {
+    if (!selectedForPlan) return activePlans;
+    const sm = (selectedForPlan.modalidade ?? "").trim();
+    return activePlans.filter((p) => {
+      const list = (p.modalidades ?? [])
+        .map((x) => String(x).trim())
+        .filter(Boolean);
+      if (list.length === 0) return true;
+      if (!sm) return false;
+      return list.some((pm) => pm.localeCompare(sm, "pt-BR", { sensitivity: "base" }) === 0);
+    });
+  }, [activePlans, selectedForPlan]);
+
+  useEffect(() => {
+    if (!planIdToAssign) return;
+    const id = Number(planIdToAssign);
+    if (!plansForSelectedStudent.some((p) => p.id === id)) {
+      setPlanIdToAssign("");
+    }
+  }, [plansForSelectedStudent, planIdToAssign]);
 
   const plansById = useMemo(() => {
     const map: Record<number, Plan> = {};
@@ -502,6 +545,37 @@ export function StudentsPage() {
     });
     return map;
   }, [plans]);
+
+  const modalidadeSelectOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of modalidadesApi ?? []) {
+      const t = m.trim();
+      if (t) set.add(t);
+    }
+    const cur = (form.modalidade ?? "").trim();
+    if (cur) set.add(cur);
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, "pt-BR", { sensitivity: "base" }),
+    );
+  }, [modalidadesApi, form.modalidade]);
+
+  const faixasForForm = useMemo(() => {
+    const m = (form.modalidade ?? "").trim();
+    if (!m) return [];
+    return (faixas ?? []).filter(
+      (f) =>
+        f.modalidade_name.trim().localeCompare(m, "pt-BR", { sensitivity: "base" }) === 0,
+    );
+  }, [faixas, form.modalidade]);
+
+  useEffect(() => {
+    if (faixas === undefined) return;
+    if (!form.faixa_id) return;
+    const ok = faixasForForm.some((f) => f.id === form.faixa_id);
+    if (!ok) setForm((prev) => ({ ...prev, faixa_id: null, grau: 0 }));
+  }, [faixas, faixasForForm, form.faixa_id]);
+
+  const modalidadeSelectValue = (form.modalidade ?? "").trim() === "" ? "" : (form.modalidade ?? "").trim();
 
   const modalidades = useMemo(() => {
     const set = new Set<string>();
@@ -583,6 +657,7 @@ export function StudentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["turmas-modalidades"] });
       setForm({ name: "", email: "", phone: "", modalidade: "", faixa_id: null, grau: 0, is_active: true });
       setEditingId(null);
       setFormError(null);
@@ -598,6 +673,7 @@ export function StudentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["turmas-modalidades"] });
     },
   });
 
@@ -841,15 +917,29 @@ export function StudentsPage() {
               </label>
               <label style={ui.label}>
                 Modalidade
-                <input
-                  type="text"
-                  placeholder="Ex: Jiu-Jitsu, Muay Thai"
-                  value={form.modalidade ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, modalidade: e.target.value }))}
-                  className="am-input"
+                <select
+                  value={modalidadeSelectValue}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      modalidade: e.target.value,
+                      faixa_id: null,
+                      grau: 0,
+                    }))
+                  }
+                  className="am-select"
                   style={ui.input}
-                />
-                <span style={ui.inputHint}>Ajuda a organizar filtros e relatórios.</span>
+                >
+                  <option value="">— Selecione —</option>
+                  {modalidadeSelectOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <span style={ui.inputHint}>
+                  Catálogo do dojo e modalidades já usadas em turmas ou alunos. Gerencie em Turmas → modalidades.
+                </span>
               </label>
               <label style={ui.label}>
                 Faixa
@@ -865,7 +955,7 @@ export function StudentsPage() {
                   style={ui.input}
                 >
                   <option value="">— Nenhuma —</option>
-                  {faixas?.map((faixa) => (
+                  {faixasForForm.map((faixa) => (
                     <option key={faixa.id} value={faixa.id}>
                       {faixa.name}
                     </option>
@@ -989,7 +1079,7 @@ export function StudentsPage() {
                     <option value="none">— Nenhuma —</option>
                     {faixas?.map((faixa) => (
                       <option key={faixa.id} value={String(faixa.id)}>
-                        {faixa.name}
+                        {faixa.modalidade_name} — {faixa.name}
                       </option>
                     ))}
                   </select>
@@ -1020,162 +1110,269 @@ export function StudentsPage() {
 
               {data && (
                 <div style={{ marginTop: tokens.space.md }}>
-                  <div style={ui.tableWrap}>
-                    <table style={ui.table}>
-                      <thead>
-                        <tr>
-                          <th style={ui.th}>Nome</th>
-                          <th style={ui.th}>Status</th>
-                          <th style={ui.th}>Modalidade</th>
-                          <th style={ui.th}>Graduação</th>
-                          <th style={ui.th}>E-mail</th>
-                          <th style={ui.th}>Telefone</th>
-                          <th style={{ ...ui.th, textAlign: "right" }}>Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredStudents.map((student, idx) => {
-                          const isActive = student.is_active ?? true;
-                          const zebra = idx % 2 === 0 ? "white" : "#fcfcfc";
-                          return (
-                            <tr
-                              key={student.id}
-                              className="am-row-hover"
-                              style={{ backgroundColor: zebra, opacity: isActive ? 1 : 0.72 }}
-                            >
-                              <td style={ui.td}>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                  <strong style={{ fontWeight: 800 }}>{student.name}</strong>
-                                  <span style={{ color: tokens.color.textMuted, fontSize: 11, lineHeight: 1.2 }}>
-                                    ID #{student.id}
-                                    {student.login_email ? ` • ${student.login_email}` : ""}
-                                  </span>
-                                </div>
-                              </td>
-                              <td style={ui.td}>
-                                <span
-                                  style={{
-                                    ...ui.pill,
-                                    borderColor: isActive ? "rgba(34,197,94,0.35)" : tokens.color.borderSubtle,
-                                    backgroundColor: isActive ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
-                                    color: isActive ? "#166534" : "#374151",
-                                  }}
-                                >
-                                  {isActive ? "Ativo" : "Inativo"}
+                  {isCompactList ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: tokens.space.sm }}>
+                      {filteredStudents.map((student) => {
+                        const isActive = student.is_active ?? true;
+                        return (
+                          <article
+                            key={student.id}
+                            style={{
+                              ...ui.card,
+                              padding: tokens.space.md,
+                              opacity: isActive ? 1 : 0.78,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <strong style={{ fontWeight: 800, color: tokens.color.textPrimary }}>{student.name}</strong>
+                                <span style={{ color: tokens.color.textMuted, fontSize: 11 }}>
+                                  ID #{student.id}
+                                  {student.login_email ? ` • ${student.login_email}` : ""}
                                 </span>
-                              </td>
-                              <td style={ui.td}>{student.modalidade ?? "-"}</td>
-                              <td style={ui.td}>{student.graduacao ?? "-"}</td>
-                              <td style={ui.td}>{student.email ?? "-"}</td>
-                              <td style={ui.td}>{student.phone ?? "-"}</td>
-                              <td style={{ ...ui.td, textAlign: "right" }}>
-                                <div style={ui.actions}>
-                                  <button
-                                    type="button"
-                                    title="Compartilhar acesso"
-                                    aria-label="Compartilhar acesso"
-                                    onClick={async () => {
-                                      const loginEmail = student.login_email ?? "";
-                                      const message = `Dados de acesso ao Arena Master:\n\nAluno: ${student.name}\nLogin: ${loginEmail}\nSenha inicial: aluno${student.id
-                                        .toString()
-                                        .padStart(4, "0")}`;
-                                      try {
-                                        await navigator.clipboard.writeText(message);
-                                        alert("Dados de acesso copiados para a área de transferência.");
-                                      } catch {
-                                        alert(message);
-                                      }
-                                    }}
-                                    className="am-btn"
-                                    style={{ ...ui.iconBtn }}
-                                  >
-                                    <IconShare />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title={
-                                      student.user_id
-                                        ? "Zerar senha para o padrão (aluno + ID)"
-                                        : "Aluno sem conta de acesso"
-                                    }
-                                    aria-label="Zerar senha para o padrão"
-                                    disabled={!student.user_id || resetPasswordMutation.isPending}
-                                    onClick={() => {
-                                      if (
-                                        !window.confirm(
-                                          `Redefinir a senha de ${student.name} para o padrão do sistema? O aluno precisará usar a nova senha no app.`,
-                                        )
-                                      ) {
-                                        return;
-                                      }
-                                      resetPasswordMutation.mutate({
-                                        id: student.id,
-                                        name: student.name,
-                                      });
-                                    }}
-                                    className="am-btn"
+                              </div>
+                              <span
+                                style={{
+                                  ...ui.pill,
+                                  borderColor: isActive ? "rgba(34,197,94,0.35)" : tokens.color.borderSubtle,
+                                  backgroundColor: isActive ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
+                                  color: isActive ? "#166534" : "#374151",
+                                }}
+                              >
+                                {isActive ? "Ativo" : "Inativo"}
+                              </span>
+                            </div>
+                            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: tokens.text.xs }}>
+                              <div><strong>Modalidade:</strong> {student.modalidade ?? "-"}</div>
+                              <div><strong>Graduação:</strong> {student.graduacao ?? "-"}</div>
+                              <div><strong>E-mail:</strong> {student.email ?? "-"}</div>
+                              <div><strong>Telefone:</strong> {student.phone ?? "-"}</div>
+                            </div>
+                            <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                title="Compartilhar acesso"
+                                aria-label="Compartilhar acesso"
+                                onClick={async () => {
+                                  const loginEmail = student.login_email ?? "";
+                                  const message = `Dados de acesso ao Arena Master:\n\nAluno: ${student.name}\nLogin: ${loginEmail}\nSenha inicial: aluno${student.id
+                                    .toString()
+                                    .padStart(4, "0")}`;
+                                  try {
+                                    await navigator.clipboard.writeText(message);
+                                    alert("Dados de acesso copiados para a área de transferência.");
+                                  } catch {
+                                    alert(message);
+                                  }
+                                }}
+                                className="am-btn"
+                                style={{ ...ui.iconBtn, width: 38 }}
+                              >
+                                <IconShare />
+                              </button>
+                              <button
+                                type="button"
+                                title={student.user_id ? "Zerar senha para o padrão (aluno + ID)" : "Aluno sem conta de acesso"}
+                                aria-label="Zerar senha para o padrão"
+                                disabled={!student.user_id || resetPasswordMutation.isPending}
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      `Redefinir a senha de ${student.name} para o padrão do sistema? O aluno precisará usar a nova senha no app.`,
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  resetPasswordMutation.mutate({
+                                    id: student.id,
+                                    name: student.name,
+                                  });
+                                }}
+                                className="am-btn"
+                                style={{ ...ui.iconBtn, width: 38, opacity: student.user_id ? 1 : 0.35 }}
+                              >
+                                <IconResetPassword />
+                              </button>
+                              <button type="button" onClick={() => startEdit(student)} className="am-btn" style={{ ...ui.iconBtn, width: 38 }} title="Editar aluno" aria-label="Editar aluno">
+                                <IconEdit />
+                              </button>
+                              <button type="button" onClick={() => openGuardians(student)} className="am-btn" style={{ ...ui.iconBtn, width: 38 }} title="Responsáveis" aria-label="Responsáveis">
+                                <IconUsers />
+                              </button>
+                              <button type="button" onClick={() => openPlanManager(student)} className="am-btn" style={{ ...ui.iconBtn, width: 38 }} title="Plano / créditos" aria-label="Plano / créditos">
+                                <IconCredit />
+                              </button>
+                              <button type="button" onClick={() => deleteMutation.mutate(student.id)} className="am-btn" style={{ ...ui.iconBtn, ...ui.buttonDanger, width: 38 }} title="Remover aluno" aria-label="Remover aluno">
+                                <IconTrash />
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                      {!filteredStudents.length && (
+                        <div style={{ ...ui.card, padding: tokens.space.md, color: tokens.color.textMuted }}>
+                          Nenhum aluno encontrado com os filtros atuais.
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={ui.tableWrap}>
+                      <table style={ui.table}>
+                        <thead>
+                          <tr>
+                            <th style={ui.th}>Nome</th>
+                            <th style={ui.th}>Status</th>
+                            <th style={ui.th}>Modalidade</th>
+                            <th style={ui.th}>Graduação</th>
+                            <th style={ui.th}>E-mail</th>
+                            <th style={ui.th}>Telefone</th>
+                            <th style={{ ...ui.th, textAlign: "right" }}>Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredStudents.map((student, idx) => {
+                            const isActive = student.is_active ?? true;
+                            const zebra = idx % 2 === 0 ? "white" : "#fcfcfc";
+                            return (
+                              <tr
+                                key={student.id}
+                                className="am-row-hover"
+                                style={{ backgroundColor: zebra, opacity: isActive ? 1 : 0.72 }}
+                              >
+                                <td style={ui.td}>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                    <strong style={{ fontWeight: 800 }}>{student.name}</strong>
+                                    <span style={{ color: tokens.color.textMuted, fontSize: 11, lineHeight: 1.2 }}>
+                                      ID #{student.id}
+                                      {student.login_email ? ` • ${student.login_email}` : ""}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={ui.td}>
+                                  <span
                                     style={{
-                                      ...ui.iconBtn,
-                                      opacity: student.user_id ? 1 : 0.35,
+                                      ...ui.pill,
+                                      borderColor: isActive ? "rgba(34,197,94,0.35)" : tokens.color.borderSubtle,
+                                      backgroundColor: isActive ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.10)",
+                                      color: isActive ? "#166534" : "#374151",
                                     }}
                                   >
-                                    <IconResetPassword />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => startEdit(student)}
-                                    className="am-btn"
-                                    style={{ ...ui.iconBtn }}
-                                    title="Editar aluno"
-                                    aria-label="Editar aluno"
-                                  >
-                                    <IconEdit />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openGuardians(student)}
-                                    className="am-btn"
-                                    style={{ ...ui.iconBtn }}
-                                    title="Responsáveis"
-                                    aria-label="Responsáveis"
-                                  >
-                                    <IconUsers />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openPlanManager(student)}
-                                    className="am-btn"
-                                    style={{ ...ui.iconBtn }}
-                                    title="Plano / créditos"
-                                    aria-label="Plano / créditos"
-                                  >
-                                    <IconCredit />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteMutation.mutate(student.id)}
-                                    className="am-btn"
-                                    style={{ ...ui.iconBtn, ...ui.buttonDanger }}
-                                    title="Remover aluno"
-                                    aria-label="Remover aluno"
-                                  >
-                                    <IconTrash />
-                                  </button>
-                                </div>
+                                    {isActive ? "Ativo" : "Inativo"}
+                                  </span>
+                                </td>
+                                <td style={ui.td}>{student.modalidade ?? "-"}</td>
+                                <td style={ui.td}>{student.graduacao ?? "-"}</td>
+                                <td style={ui.td}>{student.email ?? "-"}</td>
+                                <td style={ui.td}>{student.phone ?? "-"}</td>
+                                <td style={{ ...ui.td, textAlign: "right" }}>
+                                  <div style={ui.actions}>
+                                    <button
+                                      type="button"
+                                      title="Compartilhar acesso"
+                                      aria-label="Compartilhar acesso"
+                                      onClick={async () => {
+                                        const loginEmail = student.login_email ?? "";
+                                        const message = `Dados de acesso ao Arena Master:\n\nAluno: ${student.name}\nLogin: ${loginEmail}\nSenha inicial: aluno${student.id
+                                          .toString()
+                                          .padStart(4, "0")}`;
+                                        try {
+                                          await navigator.clipboard.writeText(message);
+                                          alert("Dados de acesso copiados para a área de transferência.");
+                                        } catch {
+                                          alert(message);
+                                        }
+                                      }}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn }}
+                                    >
+                                      <IconShare />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={
+                                        student.user_id
+                                          ? "Zerar senha para o padrão (aluno + ID)"
+                                          : "Aluno sem conta de acesso"
+                                      }
+                                      aria-label="Zerar senha para o padrão"
+                                      disabled={!student.user_id || resetPasswordMutation.isPending}
+                                      onClick={() => {
+                                        if (
+                                          !window.confirm(
+                                            `Redefinir a senha de ${student.name} para o padrão do sistema? O aluno precisará usar a nova senha no app.`,
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        resetPasswordMutation.mutate({
+                                          id: student.id,
+                                          name: student.name,
+                                        });
+                                      }}
+                                      className="am-btn"
+                                      style={{
+                                        ...ui.iconBtn,
+                                        opacity: student.user_id ? 1 : 0.35,
+                                      }}
+                                    >
+                                      <IconResetPassword />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => startEdit(student)}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn }}
+                                      title="Editar aluno"
+                                      aria-label="Editar aluno"
+                                    >
+                                      <IconEdit />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openGuardians(student)}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn }}
+                                      title="Responsáveis"
+                                      aria-label="Responsáveis"
+                                    >
+                                      <IconUsers />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openPlanManager(student)}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn }}
+                                      title="Plano / créditos"
+                                      aria-label="Plano / créditos"
+                                    >
+                                      <IconCredit />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteMutation.mutate(student.id)}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn, ...ui.buttonDanger }}
+                                      title="Remover aluno"
+                                      aria-label="Remover aluno"
+                                    >
+                                      <IconTrash />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {!filteredStudents.length && (
+                            <tr>
+                              <td colSpan={7} style={{ ...ui.td, color: tokens.color.textMuted }}>
+                                Nenhum aluno encontrado com os filtros atuais.
                               </td>
                             </tr>
-                          );
-                        })}
-                        {!filteredStudents.length && (
-                          <tr>
-                            <td colSpan={7} style={{ ...ui.td, color: tokens.color.textMuted }}>
-                              Nenhum aluno encontrado com os filtros atuais.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1272,13 +1469,22 @@ export function StudentsPage() {
                       style={ui.input}
                     >
                       <option value="">— Selecione —</option>
-                      {activePlans.map((p) => (
+                      {plansForSelectedStudent.map((p) => (
                         <option key={p.id} value={String(p.id)}>
                           {p.name} — {p.credits_total} créditos — R$ {p.price.toFixed(2)}
+                          {(p.modalidades ?? []).filter((x) => String(x).trim()).length > 0
+                            ? ` (${(p.modalidades ?? []).map((x) => String(x).trim()).filter(Boolean).join(", ")})`
+                            : ""}
                         </option>
                       ))}
                     </select>
                   </label>
+                  {plansForSelectedStudent.length === 0 && (
+                    <p style={{ margin: "6px 0 0 0", fontSize: 12, color: tokens.color.textMuted }}>
+                      Nenhum plano ativo compatível com a modalidade deste aluno. Use planos sem modalidade ou
+                      cadastre um plano para essa modalidade em Financeiro.
+                    </p>
+                  )}
                   <label style={{ ...ui.label, minWidth: 220 }}>
                     Data de vencimento
                     <input

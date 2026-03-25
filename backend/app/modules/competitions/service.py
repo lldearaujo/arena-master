@@ -381,6 +381,42 @@ async def list_belt_eligibility(
     return list(r.scalars().all())
 
 
+async def delete_age_division(
+    session: AsyncSession, user: User, competition_id: int, age_division_id: int
+) -> None:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    row = await session.get(CompetitionAgeDivision, age_division_id)
+    if row is None or row.competition_id != competition_id:
+        raise HTTPException(status_code=404, detail="Divisão não encontrada")
+    await session.delete(row)
+    await session.commit()
+
+
+async def delete_weight_class(
+    session: AsyncSession, user: User, competition_id: int, weight_class_id: int
+) -> None:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    row = await session.get(CompetitionWeightClass, weight_class_id)
+    if row is None or row.competition_id != competition_id:
+        raise HTTPException(status_code=404, detail="Categoria de peso não encontrada")
+    await session.delete(row)
+    await session.commit()
+
+
+async def delete_belt_eligibility(
+    session: AsyncSession, user: User, competition_id: int, eligibility_id: int
+) -> None:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    row = await session.get(CompetitionBeltEligibility, eligibility_id)
+    if row is None or row.competition_id != competition_id:
+        raise HTTPException(status_code=404, detail="Elegibilidade não encontrada")
+    await session.delete(row)
+    await session.commit()
+
+
 async def apply_federation_preset(
     session: AsyncSession,
     user: User,

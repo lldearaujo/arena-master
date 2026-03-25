@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -19,11 +19,13 @@ AdminDep = Annotated[User, Depends(get_current_admin)]
 async def list_faixas(
     admin: AdminDep,
     session: SessionDep,
+    modalidade_id: int | None = Query(
+        None, description="Filtra faixas desta modalidade (dojo_modalidades.id)"
+    ),
 ) -> list[schemas.FaixaRead]:
     if admin.dojo_id is None:
         return []
-    faixas = await service.list_faixas(session, admin.dojo_id)
-    return [schemas.FaixaRead.model_validate(f) for f in faixas]
+    return await service.list_faixas_read(session, admin.dojo_id, modalidade_id)
 
 
 @router.post(
@@ -41,8 +43,10 @@ async def create_faixa(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dojo não definido",
         )
-    faixa = await service.create_faixa(session, admin.dojo_id, payload)
-    return schemas.FaixaRead.model_validate(faixa)
+    try:
+        return await service.create_faixa(session, admin.dojo_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.get("/{faixa_id}", response_model=schemas.FaixaRead)
@@ -53,10 +57,10 @@ async def get_faixa(
 ) -> schemas.FaixaRead:
     if admin.dojo_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dojo não definido")
-    faixa = await service.get_faixa(session, admin.dojo_id, faixa_id)
+    faixa = await service.get_faixa_read(session, admin.dojo_id, faixa_id)
     if faixa is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faixa não encontrada")
-    return schemas.FaixaRead.model_validate(faixa)
+    return faixa
 
 
 @router.put("/{faixa_id}", response_model=schemas.FaixaRead)
@@ -68,10 +72,13 @@ async def update_faixa(
 ) -> schemas.FaixaRead:
     if admin.dojo_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dojo não definido")
-    faixa = await service.update_faixa(session, admin.dojo_id, faixa_id, payload)
+    try:
+        faixa = await service.update_faixa(session, admin.dojo_id, faixa_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if faixa is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faixa não encontrada")
-    return schemas.FaixaRead.model_validate(faixa)
+    return faixa
 
 
 @router.delete("/{faixa_id}", status_code=status.HTTP_204_NO_CONTENT)

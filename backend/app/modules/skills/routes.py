@@ -72,6 +72,7 @@ async def set_student_ratings(
     return schemas.StudentSkillRatingsRead(
         student_id=student_id,
         student_name=student["student_name"] if student else "",
+        skills=student["skills"] if student else [],
         ratings=[row.rating_1, row.rating_2, row.rating_3, row.rating_4, row.rating_5],
     )
 

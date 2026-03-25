@@ -11,6 +11,7 @@ from app.models.dojo_modalidade import DojoModalidade
 from app.models.turma import Turma
 from app.models.turma_enrollment import TurmaEnrollment
 from app.models.user import User
+from app.modules.students import service as students_service
 from app.modules.turmas.schemas import EnrollmentRequest, TurmaCreate, TurmaUpdate
 #
 # IMPORTANTE:
@@ -246,6 +247,8 @@ async def turmas_for_student(
     if user.role != "aluno" or user.dojo_id is None:
         return []
 
+    student = await students_service.get_student_for_user(session, user)
+
     today = _today_day_abbrev()
     result = await session.execute(
         select(Turma)
@@ -263,6 +266,18 @@ async def turmas_for_student(
         for t in all_turmas
         if today in [d.strip() for d in t.day_of_week.split(",")]
     ]
+    if student is not None:
+        allowed = await students_service.allowed_modalidades_for_student_turmas(
+            session, student
+        )
+        if allowed is not None:
+            allowed_cf = {a.casefold() for a in allowed}
+            filtered = [
+                t
+                for t in filtered
+                if (t.modalidade or "").strip()
+                and (t.modalidade.strip().casefold() in allowed_cf)
+            ]
     return filtered
 
 
@@ -342,11 +357,22 @@ async def turmas_for_guardian_kids(
         .order_by(Student.name, Turma.start_time)
     )
     pairs = list(result.all())
-    return [
-        (s, t)
-        for s, t in pairs
-        if today in [d.strip() for d in t.day_of_week.split(",")]
-    ]
+    out: list[tuple[Student, Turma]] = []
+    for s, t in pairs:
+        if today not in [d.strip() for d in t.day_of_week.split(",")]:
+            continue
+        allowed = await students_service.allowed_modalidades_for_student_turmas(
+            session, s
+        )
+        if allowed is None:
+            out.append((s, t))
+            continue
+        tm = (t.modalidade or "").strip()
+        if not tm:
+            continue
+        if tm.casefold() in {a.casefold() for a in allowed}:
+            out.append((s, t))
+    return out
 
 
 async def list_checkins_for_turma(

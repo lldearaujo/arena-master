@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skills import DojoSkillsConfig, StudentSkillsRating
 from app.models.student import Student
+from app.modules.modalidades import service as modalidades_service
+from app.modules.students import service as students_service
 
 
 DEFAULT_SKILLS = ["Técnica", "Força", "Cardio", "Disciplina", "Estratégia"]
@@ -67,14 +69,49 @@ async def update_config(session: AsyncSession, dojo_id: int, skills: list[str]) 
     return cfg
 
 
-async def get_overview(session: AsyncSession, dojo_id: int):
+async def resolve_skill_labels_for_student(
+    session: AsyncSession,
+    dojo_id: int,
+    student: Student,
+) -> list[str]:
+    """Rótulos das 5 habilidades: catálogo da modalidade do aluno ou padrão do dojo."""
     cfg = await get_or_create_config(session, dojo_id)
-    skills = [cfg.skill_1, cfg.skill_2, cfg.skill_3, cfg.skill_4, cfg.skill_5]
+    fallback = [cfg.skill_1, cfg.skill_2, cfg.skill_3, cfg.skill_4, cfg.skill_5]
+
+    modalidade_display = await students_service.display_modalidade_for_student(
+        session, student
+    )
+    if not modalidade_display or not str(modalidade_display).strip():
+        return fallback
+
+    first_mod = str(modalidade_display).split(",")[0].strip()
+    if not first_mod:
+        return fallback
+
+    dm = await modalidades_service.get_modalidade_by_name_casefold(
+        session, dojo_id, first_mod
+    )
+    if dm is None:
+        return fallback
+    raw = getattr(dm, "skills_labels", None)
+    if raw is None:
+        return fallback
+    if not isinstance(raw, list) or len(raw) != 5:
+        return fallback
+    try:
+        return _normalize_skills([str(x).strip() for x in raw])
+    except ValueError:
+        return fallback
+
+
+async def get_overview(session: AsyncSession, dojo_id: int) -> dict:
+    cfg = await get_or_create_config(session, dojo_id)
+    default_skills = [cfg.skill_1, cfg.skill_2, cfg.skill_3, cfg.skill_4, cfg.skill_5]
 
     students_res = await session.execute(
-        select(Student.id, Student.name).where(Student.dojo_id == dojo_id).order_by(Student.name.asc())
+        select(Student).where(Student.dojo_id == dojo_id).order_by(Student.name.asc())
     )
-    students = students_res.all()
+    students = list(students_res.scalars().all())
 
     ratings_res = await session.execute(
         select(StudentSkillsRating).where(StudentSkillsRating.dojo_id == dojo_id)
@@ -84,12 +121,14 @@ async def get_overview(session: AsyncSession, dojo_id: int):
     }
 
     items = []
-    for student_id, name in students:
-        rating = by_student_id.get(student_id)
+    for student in students:
+        skills_labels = await resolve_skill_labels_for_student(session, dojo_id, student)
+        rating = by_student_id.get(student.id)
         items.append(
             {
-                "student_id": student_id,
-                "student_name": name,
+                "student_id": student.id,
+                "student_name": student.name,
+                "skills": skills_labels,
                 "ratings": (
                     [
                         int(rating.rating_1),
@@ -104,7 +143,7 @@ async def get_overview(session: AsyncSession, dojo_id: int):
             }
         )
 
-    return {"skills": skills, "students": items}
+    return {"default_skills": default_skills, "students": items}
 
 
 async def set_student_ratings(
@@ -150,16 +189,24 @@ async def set_student_ratings(
 async def get_student_skills(
     session: AsyncSession, dojo_id: int, student_id: int
 ) -> tuple[list[str], list[int]]:
-    cfg = await get_or_create_config(session, dojo_id)
-    skills = [cfg.skill_1, cfg.skill_2, cfg.skill_3, cfg.skill_4, cfg.skill_5]
+    student_res = await session.execute(
+        select(Student).where(Student.id == student_id, Student.dojo_id == dojo_id)
+    )
+    student = student_res.scalar_one_or_none()
+    if student is None:
+        cfg = await get_or_create_config(session, dojo_id)
+        labels = [cfg.skill_1, cfg.skill_2, cfg.skill_3, cfg.skill_4, cfg.skill_5]
+        return labels, [0, 0, 0, 0, 0]
+
+    labels = await resolve_skill_labels_for_student(session, dojo_id, student)
 
     res = await session.execute(
         select(StudentSkillsRating).where(StudentSkillsRating.student_id == student_id)
     )
     rating = res.scalar_one_or_none()
     if rating is None:
-        return skills, [0, 0, 0, 0, 0]
-    return skills, [
+        return labels, [0, 0, 0, 0, 0]
+    return labels, [
         int(rating.rating_1),
         int(rating.rating_2),
         int(rating.rating_3),

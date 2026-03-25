@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
@@ -27,12 +27,29 @@ type Turma = {
   end_time: string;
 };
 
+function toInputDate(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
 export function CheckInsPage() {
+  const today = toInputDate(new Date());
   const [turmaId, setTurmaId] = useState<string>("");
   const [studentName, setStudentName] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(today);
+  const [endDate, setEndDate] = useState<string>(today);
+  const [isSmallScreen, setIsSmallScreen] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
+  );
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const onChange = () => setIsSmallScreen(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   const { data: turmas } = useQuery({
     queryKey: ["turmas-for-checkins"],
@@ -90,6 +107,29 @@ export function CheckInsPage() {
     refetch();
   };
 
+  const applyDateShortcut = (shortcut: "today" | "yesterday" | "last7") => {
+    const now = new Date();
+    if (shortcut === "today") {
+      const value = toInputDate(now);
+      setStartDate(value);
+      setEndDate(value);
+      return;
+    }
+    if (shortcut === "yesterday") {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const value = toInputDate(yesterday);
+      setStartDate(value);
+      setEndDate(value);
+      return;
+    }
+    const end = toInputDate(now);
+    const start = new Date(now);
+    start.setDate(start.getDate() - 6);
+    setStartDate(toInputDate(start));
+    setEndDate(end);
+  };
+
   const handleConfirmPresence = (checkinId: number) => {
     if (confirmMutation.isPending) return;
     confirmMutation.mutate(checkinId);
@@ -103,7 +143,7 @@ export function CheckInsPage() {
   return (
     <div
       style={{
-        padding: tokens.space.xl,
+        padding: isSmallScreen ? tokens.space.md : tokens.space.xl,
         maxWidth: 1200,
         margin: "0 auto",
         fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
@@ -171,7 +211,7 @@ export function CheckInsPage() {
               value={turmaId}
               onChange={(e) => setTurmaId(e.target.value)}
               style={{
-                width: 200,
+                width: isSmallScreen ? "100%" : 200,
                 padding: `${tokens.space.sm}px ${tokens.space.md}px`,
                 borderRadius: tokens.radius.md,
                 border: `1px solid ${tokens.color.borderSubtle}`,
@@ -204,7 +244,7 @@ export function CheckInsPage() {
               onChange={(e) => setStudentName(e.target.value)}
               placeholder="Ex: Diego"
               style={{
-                width: 160,
+                width: isSmallScreen ? "100%" : 160,
                 padding: `${tokens.space.sm}px ${tokens.space.md}px`,
                 borderRadius: tokens.radius.md,
                 border: `1px solid ${tokens.color.borderSubtle}`,
@@ -228,7 +268,7 @@ export function CheckInsPage() {
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               style={{
-                width: 180,
+                width: isSmallScreen ? "100%" : 180,
                 padding: `${tokens.space.sm}px ${tokens.space.md}px`,
                 borderRadius: tokens.radius.md,
                 border: `1px solid ${tokens.color.borderSubtle}`,
@@ -252,7 +292,7 @@ export function CheckInsPage() {
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               style={{
-                width: 180,
+                width: isSmallScreen ? "100%" : 180,
                 padding: `${tokens.space.sm}px ${tokens.space.md}px`,
                 borderRadius: tokens.radius.md,
                 border: `1px solid ${tokens.color.borderSubtle}`,
@@ -261,6 +301,63 @@ export function CheckInsPage() {
               }}
             />
           </label>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: tokens.space.xs,
+              alignItems: "center",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => applyDateShortcut("yesterday")}
+              style={{
+                padding: `${tokens.space.xs}px ${tokens.space.sm}px`,
+                backgroundColor: "white",
+                color: tokens.color.textPrimary,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                cursor: "pointer",
+                fontSize: tokens.text.xs,
+                fontWeight: 600,
+              }}
+            >
+              Ontem
+            </button>
+            <button
+              type="button"
+              onClick={() => applyDateShortcut("today")}
+              style={{
+                padding: `${tokens.space.xs}px ${tokens.space.sm}px`,
+                backgroundColor: tokens.color.bgSubtle,
+                color: tokens.color.textPrimary,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                cursor: "pointer",
+                fontSize: tokens.text.xs,
+                fontWeight: 700,
+              }}
+            >
+              Hoje
+            </button>
+            <button
+              type="button"
+              onClick={() => applyDateShortcut("last7")}
+              style={{
+                padding: `${tokens.space.xs}px ${tokens.space.sm}px`,
+                backgroundColor: "white",
+                color: tokens.color.textPrimary,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                cursor: "pointer",
+                fontSize: tokens.text.xs,
+                fontWeight: 600,
+              }}
+            >
+              7 dias
+            </button>
+          </div>
           <button
             type="submit"
             style={{
@@ -284,8 +381,8 @@ export function CheckInsPage() {
             onClick={() => {
               setTurmaId("");
               setStudentName("");
-              setStartDate("");
-              setEndDate("");
+              setStartDate(today);
+              setEndDate(today);
               refetch();
             }}
             style={{
@@ -350,19 +447,117 @@ export function CheckInsPage() {
         </p>
       )}
       {filteredData.length > 0 && (
-        <div
-          style={{
-            marginTop: tokens.space.md,
-            overflowX: "auto",
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: tokens.text.sm,
-            }}
-          >
+        <div style={{ marginTop: tokens.space.md }}>
+          {isSmallScreen ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: tokens.space.sm }}>
+              {filteredData.map((c) => (
+                <article
+                  key={c.id}
+                  style={{
+                    border: `1px solid ${tokens.color.borderSubtle}`,
+                    borderRadius: tokens.radius.md,
+                    backgroundColor: "white",
+                    padding: tokens.space.md,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: tokens.space.xs,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: tokens.color.textPrimary }}>
+                    {c.student_name ?? `ID ${c.student_id}`}
+                  </div>
+                  <div style={{ fontSize: tokens.text.xs, color: tokens.color.textMuted }}>
+                    Turma: {c.turma_id}{" "}
+                    {turmasById[c.turma_id]?.name
+                      ? `- ${turmasById[c.turma_id].name}`
+                      : c.turma_name
+                        ? `- ${c.turma_name}`
+                        : ""}
+                  </div>
+                  <div style={{ fontSize: tokens.text.xs, color: tokens.color.textMuted }}>
+                    Horário:{" "}
+                    {turmasById[c.turma_id]
+                      ? `${turmasById[c.turma_id].start_time.slice(0, 5)} - ${turmasById[c.turma_id].end_time.slice(0, 5)}`
+                      : "—"}
+                  </div>
+                  <div style={{ fontSize: tokens.text.xs, color: tokens.color.textMuted }}>
+                    Data: {new Date(c.occurred_at).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: tokens.text.sm }}>
+                    <strong>Score:</strong> {c.score ?? "—"}
+                  </div>
+                  {c.presence_confirmed_at ? (
+                    <span style={{ color: "#16a34a", fontWeight: 600, fontSize: tokens.text.xs }}>
+                      Confirmado em {new Date(c.presence_confirmed_at).toLocaleString()}
+                    </span>
+                  ) : c.marked_absent_at ? (
+                    <span style={{ color: "#b45309", fontWeight: 600, fontSize: tokens.text.xs }}>
+                      Ausente (crédito devolvido)
+                    </span>
+                  ) : (
+                    <div style={{ display: "flex", gap: tokens.space.xs, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmPresence(c.id)}
+                        disabled={
+                          (confirmMutation.isPending && confirmMutation.variables === c.id) ||
+                          (markAbsentMutation.isPending && markAbsentMutation.variables === c.id)
+                        }
+                        style={{
+                          padding: "7px 10px",
+                          backgroundColor: "#16a34a",
+                          color: "white",
+                          borderRadius: tokens.radius.md,
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: tokens.text.xs,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {confirmMutation.isPending && confirmMutation.variables === c.id
+                          ? "Confirmando..."
+                          : "Confirmar presença"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMarkAbsent(c.id)}
+                        disabled={
+                          (confirmMutation.isPending && confirmMutation.variables === c.id) ||
+                          (markAbsentMutation.isPending && markAbsentMutation.variables === c.id)
+                        }
+                        style={{
+                          padding: "7px 10px",
+                          backgroundColor: "#b45309",
+                          color: "white",
+                          borderRadius: tokens.radius.md,
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: tokens.text.xs,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {markAbsentMutation.isPending && markAbsentMutation.variables === c.id
+                          ? "Marcando..."
+                          : "Ausente"}
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                overflowX: "auto",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: tokens.text.sm,
+                }}
+              >
             <thead>
               <tr
                 style={{
@@ -566,7 +761,9 @@ export function CheckInsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+              </table>
+            </div>
+          )}
         </div>
       )}
       </section>

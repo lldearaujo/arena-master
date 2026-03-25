@@ -23,8 +23,14 @@ async def list_modalidades(
         return []
     unified = await service.list_modalidades_unificadas(session, admin.dojo_id)
     return [
-        schemas.ModalidadeListaItem(id=i, name=n, em_catalogo=c)
-        for i, n, c in unified
+        schemas.ModalidadeListaItem(
+            id=i,
+            name=n,
+            em_catalogo=c,
+            has_graduation_system=h,
+            skills_labels=sl,
+        )
+        for i, n, c, h, sl in unified
     ]
 
 
@@ -98,7 +104,7 @@ async def create_modalidade(
     return schemas.ModalidadeRead.model_validate(row)
 
 
-@router.put("/{modalidade_id}", response_model=schemas.ModalidadeRead)
+@router.put("/{modalidade_id:int}", response_model=schemas.ModalidadeRead)
 async def update_modalidade(
     modalidade_id: int,
     payload: schemas.ModalidadeUpdate,
@@ -127,7 +133,7 @@ async def update_modalidade(
     return schemas.ModalidadeRead.model_validate(row)
 
 
-@router.delete("/{modalidade_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{modalidade_id:int}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_modalidade(
     modalidade_id: int,
     admin: AdminDep,

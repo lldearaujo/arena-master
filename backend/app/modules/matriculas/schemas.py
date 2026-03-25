@@ -18,6 +18,8 @@ class FaixaOption(BaseModel):
     name: str
     max_graus: int
     exibir_como_dan: bool = False
+    modalidade_id: int
+    modalidade_name: str
 
 
 class MatriculaLinkGenerateResponse(BaseModel):

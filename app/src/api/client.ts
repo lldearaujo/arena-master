@@ -7,14 +7,34 @@ import Constants from "expo-constants";
 import { useAuthStore } from "../store/auth";
 
 function resolveBaseUrl(): string {
-  // Web continua apontando para localhost do navegador
+  const trim = (u: string | undefined) => u?.replace(/\/+$/, "");
+  const fromEnv = trim(process.env.EXPO_PUBLIC_API_URL);
+  const fromEnvWeb = trim(process.env.EXPO_PUBLIC_API_URL_WEB);
+
+  // Web no navegador compartilha a mesma variável EXPO_PUBLIC_API_URL que o Expo Go usa para a LAN.
+  // Isso fazia o browser chamar 192.168.x.x:8000 onde frequentemente há *outro* processo (mesma porta),
+  // gerando 404 em /api/... do Arena Master. Em dev, web usa localhost por padrão.
   if (Platform.OS === "web") {
-    return "http://localhost:8000";
+    if (fromEnvWeb) {
+      return fromEnvWeb;
+    }
+    if (__DEV__) {
+      const local = "http://localhost:8000";
+      if (fromEnv && fromEnv !== local && fromEnv !== "http://127.0.0.1:8000") {
+        console.info(
+          "[api] Web (dev): baseURL = %s — EXPO_PUBLIC_API_URL (%s) é ignorado no browser. " +
+            "Use EXPO_PUBLIC_API_URL_WEB se precisar da API na LAN.",
+          local,
+          fromEnv,
+        );
+      }
+      return local;
+    }
+    return fromEnv ?? "https://arenamasterbk.ideiasobria.online";
   }
 
-  // Se o .env do app definir EXPO_PUBLIC_API_URL, ele tem prioridade
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+  if (fromEnv) {
+    return fromEnv;
   }
 
   // Em builds instalados (produção), `hostUri` normalmente não existe.

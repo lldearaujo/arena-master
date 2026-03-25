@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -20,6 +20,7 @@ type Plan = {
   dojo_id: number;
   name: string;
   description: string | null;
+  modalidades?: string[] | null;
   price: number;
   credits_total: number;
   validity_days: number;
@@ -31,6 +32,8 @@ type FaixaOption = {
   name: string;
   max_graus: number;
   exibir_como_dan: boolean;
+  modalidade_id: number;
+  modalidade_name: string;
 };
 
 type FormResponse = {
@@ -98,6 +101,19 @@ function formatBRL(value: number) {
   } catch {
     return `R$ ${value.toFixed(2)}`;
   }
+}
+
+function planMatchesStudentModalidade(
+  plan: Pick<Plan, "modalidades">,
+  studentModalidade: string | null | undefined,
+): boolean {
+  const list = (plan.modalidades ?? [])
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  if (list.length === 0) return true;
+  const sm = (studentModalidade ?? "").trim();
+  if (!sm) return false;
+  return list.some((pm) => pm.localeCompare(sm, "pt-BR", { sensitivity: "base" }) === 0);
 }
 
 function StepPill(props: { active: boolean; done: boolean; label: string }) {
@@ -173,7 +189,48 @@ export function MatriculaPage() {
   const modalidades = data?.modalidades ?? [];
   const faixas = data?.faixas ?? [];
 
-  const selectedFaixa = faixas.find((f) => f.id === student.faixa_id) ?? null;
+  const faixasForModalidade = useMemo(() => {
+    const m = (student.modalidade ?? "").trim();
+    if (!m) return [];
+    return faixas.filter(
+      (f) =>
+        f.modalidade_name.trim().localeCompare(m, "pt-BR", { sensitivity: "base" }) === 0,
+    );
+  }, [faixas, student.modalidade]);
+
+  useEffect(() => {
+    if (!student.faixa_id) return;
+    const ok = faixasForModalidade.some((f) => f.id === student.faixa_id);
+    if (!ok) setStudent((s) => ({ ...s, faixa_id: null, grau: 0 }));
+  }, [faixasForModalidade, student.faixa_id]);
+
+  const plansForMatricula = useMemo(
+    () => plans.filter((p) => p.active && planMatchesStudentModalidade(p, student.modalidade)),
+    [plans, student.modalidade],
+  );
+
+  useEffect(() => {
+    if (step !== 3 || selectedPlanId == null) return;
+    const chosen = plans.find((p) => p.id === selectedPlanId);
+    if (!chosen || !chosen.active || !planMatchesStudentModalidade(chosen, student.modalidade)) {
+      setSelectedPlanId(null);
+    }
+  }, [step, plans, selectedPlanId, student.modalidade]);
+
+  const modalidadeSelectOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of modalidades) {
+      const t = String(m).trim();
+      if (t) set.add(t);
+    }
+    const cur = (student.modalidade ?? "").trim();
+    if (cur) set.add(cur);
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, "pt-BR", { sensitivity: "base" }),
+    );
+  }, [modalidades, student.modalidade]);
+
+  const selectedFaixa = faixasForModalidade.find((f) => f.id === student.faixa_id) ?? null;
   const grauMax = selectedFaixa?.max_graus ?? 0;
 
   const submitMutation = useMutation({
@@ -215,6 +272,7 @@ export function MatriculaPage() {
     if (!passwordConfirm || passwordConfirm.length < 6) return setSubmitError("Confirme a senha.");
     if (passwordConfirm !== student.password) return setSubmitError("As senhas não conferem.");
     if (hasGraduation) {
+      if (!(student.modalidade ?? "").trim()) return setSubmitError("Selecione a modalidade para informar a graduação.");
       if (!student.faixa_id) return setSubmitError("Selecione sua faixa.");
       if (student.grau === undefined || student.grau === null) return setSubmitError("Selecione seu grau.");
       if ((student.grau ?? 0) > grauMax) return setSubmitError("Grau acima do limite da faixa.");
@@ -412,21 +470,37 @@ export function MatriculaPage() {
                       </span>
                       <select
                         style={inputStyle}
-                        value={student.modalidade ?? ""}
-                        onChange={(e) =>
+                        value={(student.modalidade ?? "").trim() === "" ? "" : (student.modalidade ?? "").trim()}
+                        onChange={(e) => {
+                          const v = e.target.value ? e.target.value : null;
                           setStudent((s) => ({
                             ...s,
-                            modalidade: e.target.value ? e.target.value : null,
-                          }))
-                        }
+                            modalidade: v,
+                            faixa_id: null,
+                            grau: 0,
+                          }));
+                          setSelectedPlanId(null);
+                        }}
                       >
-                        <option value="">— Selecione —</option>
-                        {modalidades.map((m) => (
+                        <option value="">Selecione uma modalidade</option>
+                        {modalidadeSelectOptions.map((m) => (
                           <option key={m} value={m}>
                             {m}
                           </option>
                         ))}
                       </select>
+                      {modalidadeSelectOptions.length === 0 && (
+                        <span
+                          style={{
+                            fontSize: tokens.text.xs,
+                            color: tokens.color.textMuted,
+                            marginTop: 4,
+                          }}
+                        >
+                          Nenhuma modalidade cadastrada ainda nesta academia. O administrador pode cadastrá-las em
+                          Turmas (gerenciar modalidades).
+                        </span>
+                      )}
                     </label>
 
                     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -507,7 +581,7 @@ export function MatriculaPage() {
                               if (!enabled) {
                                 setStudent((s) => ({ ...s, faixa_id: null, grau: 0 }));
                               } else {
-                                const first = faixas[0]?.id ?? null;
+                                const first = faixasForModalidade[0]?.id ?? null;
                                 setStudent((s) => ({ ...s, faixa_id: first, grau: 0 }));
                               }
                               setSubmitError(null);
@@ -526,7 +600,7 @@ export function MatriculaPage() {
                                 value={student.faixa_id ?? ""}
                                 onChange={(e) => {
                                   const id = e.target.value ? Number(e.target.value) : null;
-                                  const faixa = faixas.find((f) => f.id === id) ?? null;
+                                  const faixa = faixasForModalidade.find((f) => f.id === id) ?? null;
                                   const max = faixa?.max_graus ?? 0;
                                   setStudent((s) => ({
                                     ...s,
@@ -536,7 +610,7 @@ export function MatriculaPage() {
                                 }}
                               >
                                 <option value="">— Selecione —</option>
-                                {faixas.map((f) => (
+                                {faixasForModalidade.map((f) => (
                                   <option key={f.id} value={f.id}>
                                     {f.name}
                                   </option>
@@ -627,8 +701,21 @@ export function MatriculaPage() {
                     Escolha o plano
                   </h2>
 
+                  <p
+                    style={{
+                      margin: `${tokens.space.sm}px 0 0 0`,
+                      fontSize: tokens.text.sm,
+                      color: tokens.color.textMuted,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Só aparecem planos que incluem a modalidade que você escolheu no passo anterior
+                    {(student.modalidade ?? "").trim() ? ` (${(student.modalidade ?? "").trim()})` : ""}.
+                    Planos sem restrição de modalidade ficam sempre disponíveis.
+                  </p>
+
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: tokens.space.md, marginTop: tokens.space.lg }}>
-                    {plans.map((p) => {
+                    {plansForMatricula.map((p) => {
                       const selected = selectedPlanId === p.id;
                       return (
                         <button
@@ -668,6 +755,26 @@ export function MatriculaPage() {
                       );
                     })}
                   </div>
+
+                  {plansForMatricula.length === 0 && (
+                    <p
+                      style={{
+                        marginTop: tokens.space.md,
+                        padding: tokens.space.md,
+                        borderRadius: tokens.radius.md,
+                        backgroundColor: "rgba(234,179,8,0.12)",
+                        color: tokens.color.textPrimary,
+                        fontSize: tokens.text.sm,
+                        fontWeight: 700,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Não há planos ativos para a combinação atual.{" "}
+                      {(student.modalidade ?? "").trim()
+                        ? "Escolha outra modalidade, deixe a modalidade em branco (planos genéricos) ou peça à academia para cadastrar um plano para esta modalidade."
+                        : "Peça à academia para cadastrar planos genéricos (sem modalidade) ou selecione uma modalidade se os planos forem específicos."}
+                    </p>
+                  )}
 
                   {submitError && (
                     <p style={{ marginTop: tokens.space.md, color: tokens.color.error, fontWeight: 900 }}>

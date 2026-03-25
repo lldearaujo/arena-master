@@ -1,7 +1,9 @@
 import { Bell, Receipt, ScrollText, SquareCheckBig, User } from "lucide-react-native";
 import { Tabs } from "expo-router";
 import { Redirect } from "expo-router";
+import { useEffect } from "react";
 
+import { registerAndroidFcmAndSync } from "../../src/notifications/androidFcm";
 import { useAuthStore } from "../../src/store/auth";
 import { tokens } from "../../src/ui/tokens";
 
@@ -27,6 +29,11 @@ function TabIcon({
 
 export default function TabsLayout() {
   const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    if (!user) return;
+    void registerAndroidFcmAndSync(user.id);
+  }, [user?.id]);
 
   if (!user) {
     return <Redirect href="/(auth)/login" />;

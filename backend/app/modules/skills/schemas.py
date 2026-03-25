@@ -12,11 +12,12 @@ class SkillsConfigUpdate(BaseModel):
 class StudentSkillRatingsRead(BaseModel):
     student_id: int
     student_name: str
+    skills: list[str]
     ratings: list[int] | None = None
 
 
 class SkillsOverviewRead(BaseModel):
-    skills: list[str]
+    default_skills: list[str]
     students: list[StudentSkillRatingsRead]
 
 

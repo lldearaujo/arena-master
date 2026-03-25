@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -45,11 +45,21 @@ export function CompetitionsListPage() {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
-  const [tab, setTab] = useState<"lista" | "painel" | "financeiro">("lista");
-  const [copyHint, setCopyHint] = useState<string | null>(null);
-
   const showOrganizerTabs =
     user?.role === "superadmin" || (user?.role === "admin" && user.dojoId != null);
+
+  const [tab, setTab] = useState<"lista" | "painel" | "financeiro">(() => {
+    const u = useAuthStore.getState().user;
+    const organizer = u?.role === "superadmin" || (u?.role === "admin" && u.dojoId != null);
+    return organizer ? "painel" : "lista";
+  });
+  const [copyHint, setCopyHint] = useState<string | null>(null);
+
+  // Se o utilizador ainda não estava hidratado no 1.º render, passar a KPIs quando for organizador.
+  useEffect(() => {
+    if (!showOrganizerTabs) return;
+    setTab((prev) => (prev === "lista" ? "painel" : prev));
+  }, [showOrganizerTabs]);
 
   const { data: list, isLoading } = useQuery({
     queryKey: ["competitions"],

@@ -10,12 +10,14 @@
       "supportsTablet": true
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/arena-master-app.png",
         "backgroundColor": "#C5A85B"
       },
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "package": "com.lldearaujo.arenamaster"
     },
@@ -29,6 +31,14 @@
         "expo-image-picker",
         {
           "photosPermission": "O app precisa acessar suas fotos para definir o avatar do perfil."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C5A85B",
+          "defaultChannel": "default",
+          "enableBackgroundRemoteNotifications": true
         }
       ]
     ],

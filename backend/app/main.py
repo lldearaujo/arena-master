@@ -41,8 +41,12 @@ def create_app() -> FastAPI:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:8081",  # Expo web
+        "http://localhost:8081",  # Expo web (comum)
         "http://127.0.0.1:8081",
+        "http://localhost:19006",  # Expo web (porta alternativa)
+        "http://127.0.0.1:19006",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
     ]
     extra_origins = settings.cors_origins or []
     allow_origins = list(dict.fromkeys([*dev_origins, *extra_origins]))

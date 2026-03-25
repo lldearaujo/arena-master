@@ -206,6 +206,16 @@ async def get_age_divisions(
     return [schemas.AgeDivisionRead.model_validate(x) for x in rows]
 
 
+@router.delete("/{competition_id}/age-divisions/{age_division_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_age_division(
+    competition_id: int,
+    age_division_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> None:
+    await service.delete_age_division(session, admin, competition_id, age_division_id)
+
+
 @router.post(
     "/{competition_id}/weight-classes",
     response_model=schemas.WeightClassRead,
@@ -231,6 +241,16 @@ async def get_weight_classes(
 ) -> list:
     rows = await service.list_weight_classes(session, admin, competition_id)
     return service.weight_classes_to_read(rows)
+
+
+@router.delete("/{competition_id}/weight-classes/{weight_class_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_weight_class(
+    competition_id: int,
+    weight_class_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> None:
+    await service.delete_weight_class(session, admin, competition_id, weight_class_id)
 
 
 @router.post(
@@ -259,6 +279,16 @@ async def list_belt_elig(
 ) -> list:
     rows = await service.list_belt_eligibility(session, admin, competition_id)
     return [schemas.BeltEligibilityRead.model_validate(x) for x in rows]
+
+
+@router.delete("/{competition_id}/belt-eligibility/{eligibility_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_belt_eligibility(
+    competition_id: int,
+    eligibility_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> None:
+    await service.delete_belt_eligibility(session, admin, competition_id, eligibility_id)
 
 
 @router.get("/{competition_id}/eligibility-options", response_model=schemas.EligibilityOptionsResponse)

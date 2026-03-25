@@ -15,6 +15,7 @@ from app.core.database import get_session
 from app.core.security import get_current_admin, get_current_user
 from app.models.user import User
 from app.modules.finance import schemas, service
+from app.modules.students import service as students_service
 
 
 router = APIRouter()
@@ -231,7 +232,11 @@ async def list_my_plans(
     """Lista planos ativos do dojo do aluno (para alterar plano)."""
     if user.dojo_id is None:
         return []
-    plans = await service.list_active_plans(session, user.dojo_id)
+    student = await students_service.get_student_for_user(session, user)
+    stud_mod = student.modalidade if student is not None else None
+    plans = await service.list_active_plans_for_student(
+        session, user.dojo_id, stud_mod
+    )
     return [schemas.PlanRead.model_validate(p) for p in plans]
 
 

@@ -40,6 +40,8 @@ class StudentRead(StudentBase):
     faixa_id: int | None = None
     grau: int = 0
     graduacao: str | None = None  # preenchido na rota (não vem do ORM)
+    # Catálogo de modalidades: se todas as modalidades do aluno forem "sem graduação", o app oculta faixa/graus.
+    exibir_graduacao_no_perfil: bool = True
     # Sobrescreve StudentBase.email: EmailStr rejeita domínios como `.local` (seeds / imports).
     # Na leitura, o valor vem do banco e precisa ser serializado sem falhar.
     email: str | None = None
