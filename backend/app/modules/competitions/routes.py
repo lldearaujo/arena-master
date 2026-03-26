@@ -253,6 +253,86 @@ async def delete_weight_class(
     await service.delete_weight_class(session, admin, competition_id, weight_class_id)
 
 
+@router.get(
+    "/{competition_id}/prizes",
+    response_model=list[schemas.CompetitionPrizeRead],
+)
+async def list_prizes_ep(
+    competition_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> list[schemas.CompetitionPrizeRead]:
+    rows = await service.list_prizes(session, admin, competition_id)
+    return [schemas.CompetitionPrizeRead.model_validate(x) for x in rows]
+
+
+@router.post(
+    "/{competition_id}/prizes",
+    response_model=schemas.CompetitionPrizeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_prize_ep(
+    competition_id: int,
+    payload: schemas.CompetitionPrizeCreate,
+    admin: UserDep,
+    session: SessionDep,
+) -> schemas.CompetitionPrizeRead:
+    row = await service.create_prize(session, admin, competition_id, payload)
+    return schemas.CompetitionPrizeRead.model_validate(row)
+
+
+@router.delete(
+    "/{competition_id}/prizes/{prize_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_prize_ep(
+    competition_id: int,
+    prize_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> None:
+    await service.delete_prize(session, admin, competition_id, prize_id)
+
+
+@router.get(
+    "/{competition_id}/awards",
+    response_model=list[schemas.CompetitionAwardRead],
+)
+async def list_awards_ep(
+    competition_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> list[schemas.CompetitionAwardRead]:
+    return await service.list_awards(session, admin, competition_id)
+
+
+@router.post(
+    "/{competition_id}/awards",
+    response_model=schemas.CompetitionAwardRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_award_ep(
+    competition_id: int,
+    payload: schemas.CompetitionAwardCreate,
+    admin: UserDep,
+    session: SessionDep,
+) -> schemas.CompetitionAwardRead:
+    return await service.create_award(session, admin, competition_id, payload)
+
+
+@router.delete(
+    "/{competition_id}/awards/{award_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_award_ep(
+    competition_id: int,
+    award_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> None:
+    await service.delete_award(session, admin, competition_id, award_id)
+
+
 @router.post(
     "/{competition_id}/belt-eligibility",
     response_model=schemas.BeltEligibilityRead,
@@ -429,8 +509,12 @@ async def confirm_registration_payment_ep(
     registration_id: int,
     admin: UserDep,
     session: SessionDep,
+    body: schemas.RegistrationPaymentConfirmBody | None = Body(None),
 ) -> schemas.RegistrationRead:
-    r = await service.confirm_registration_payment(session, admin, competition_id, registration_id)
+    force = bool(body.force_without_receipt) if body is not None else False
+    r = await service.confirm_registration_payment(
+        session, admin, competition_id, registration_id, force_without_receipt=force
+    )
     await _broadcast(competition_id, {"type": "registration_payment_confirmed", "registration_id": registration_id})
     return await service.registration_to_read(session, r)
 

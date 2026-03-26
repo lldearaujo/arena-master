@@ -15,6 +15,8 @@ from app.models.competition import (
     CompetitionBracket,
     CompetitionMat,
     CompetitionMatch,
+    CompetitionAward,
+    CompetitionPrize,
     CompetitionRegistration,
     CompetitionWeightClass,
     NotificationOutbox,
@@ -84,14 +86,238 @@ async def list_competitions(session: AsyncSession, user: User) -> list[Competiti
         )
         return list(r.scalars().all())
     if user.role == "aluno":
+        # Aluno: catálogo filtrado por modalidade do aluno x modalidade do evento.
+        # Regras:
+        # - evento precisa estar publicado
+        # - evento precisa ter `event_modality` configurada
+        # - modalidade do aluno pode ser "A, B, C" (texto) -> fazemos match case-insensitive
+        from app.modules.students.service import get_student_for_user, display_modalidade_for_student
+
+        student = await get_student_for_user(session, user)
+        modality_display: str | None = None
+        if student is not None:
+            modality_display = await display_modalidade_for_student(session, student)
+        allowed_cf: set[str] = set()
+        for part in (modality_display or "").split(","):
+            s = part.strip()
+            if s:
+                allowed_cf.add(s.casefold())
+
         r = await session.execute(
             select(Competition)
             .where(Competition.is_published.is_(True))
             .order_by(Competition.reference_year.desc(), Competition.created_at.desc())
         )
-        return list(r.scalars().all())
+        all_rows = list(r.scalars().all())
+        if not allowed_cf:
+            return []
+        return [
+            c
+            for c in all_rows
+            if getattr(c, "event_modality", None)
+            and str(getattr(c, "event_modality")).strip().casefold() in allowed_cf
+        ]
     return []
 
+
+# --- prizes ---
+
+
+async def list_prizes(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> list[CompetitionPrize]:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    r = await session.execute(
+        select(CompetitionPrize)
+        .where(CompetitionPrize.competition_id == competition_id)
+        .order_by(
+            CompetitionPrize.kind,
+            CompetitionPrize.modality,
+            CompetitionPrize.gender,
+            CompetitionPrize.age_division_id,
+            CompetitionPrize.faixa_id,
+            CompetitionPrize.place,
+            CompetitionPrize.id,
+        )
+    )
+    return list(r.scalars().all())
+
+
+async def create_prize(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+    payload: schemas.CompetitionPrizeCreate,
+) -> CompetitionPrize:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+
+    kind = (payload.kind or "").strip()
+    reward = payload.reward.strip()
+    if kind == "category" and payload.age_division_id is None:
+        raise HTTPException(status_code=400, detail="Informe a divisão de idade para premiação por categoria")
+
+    if payload.faixa_id is not None:
+        fx = await session.get(Faixa, payload.faixa_id)
+        if fx is None:
+            raise HTTPException(status_code=400, detail="Faixa inválida")
+        # Para admin, restringe ao dojo organizador; superadmin pode criar para qualquer.
+        if user.role != "superadmin" and getattr(fx, "dojo_id", None) != comp.organizer_dojo_id:
+            raise HTTPException(status_code=400, detail="Faixa não pertence ao dojo organizador")
+
+    row = CompetitionPrize(
+        competition_id=competition_id,
+        kind=kind,
+        age_division_id=payload.age_division_id,
+        faixa_id=payload.faixa_id,
+        gender=payload.gender,
+        modality=payload.modality,
+        place=int(payload.place),
+        reward=reward,
+    )
+    session.add(row)
+    try:
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail="Premiação duplicada para este alvo/posição") from exc
+    await session.refresh(row)
+    return row
+
+
+async def delete_prize(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+    prize_id: int,
+) -> None:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    r = await session.execute(
+        select(CompetitionPrize).where(
+            CompetitionPrize.id == prize_id,
+            CompetitionPrize.competition_id == competition_id,
+        )
+    )
+    row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Premiação não encontrada")
+    await session.delete(row)
+    await session.commit()
+
+
+# --- awards (medalhas/pódio) ---
+
+
+async def list_awards(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> list[schemas.CompetitionAwardRead]:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+
+    r = await session.execute(
+        select(CompetitionAward, Student.name, CompetitionPrize.reward)
+        .join(Student, Student.id == CompetitionAward.student_id)
+        .outerjoin(CompetitionPrize, CompetitionPrize.id == CompetitionAward.prize_id)
+        .where(CompetitionAward.competition_id == competition_id)
+        .order_by(
+            CompetitionAward.kind,
+            CompetitionAward.modality,
+            CompetitionAward.gender,
+            CompetitionAward.age_division_id,
+            CompetitionAward.weight_class_id,
+            CompetitionAward.place,
+            CompetitionAward.id,
+        )
+    )
+    out: list[schemas.CompetitionAwardRead] = []
+    for award, student_name, reward in r.all():
+        base = schemas.CompetitionAwardRead.model_validate(award)
+        out.append(
+            base.model_copy(
+                update={
+                    "student_name": student_name,
+                    "reward": reward,
+                }
+            )
+        )
+    return out
+
+
+async def create_award(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+    payload: schemas.CompetitionAwardCreate,
+) -> schemas.CompetitionAwardRead:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+
+    student = await session.get(Student, payload.student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Aluno não encontrado")
+
+    if payload.prize_id is not None:
+        prize = await session.get(CompetitionPrize, payload.prize_id)
+        if prize is None or prize.competition_id != competition_id:
+            raise HTTPException(status_code=400, detail="Premiação inválida para esta competição")
+
+    kind = (payload.kind or "").strip()
+    if kind == "category" and payload.age_division_id is None:
+        raise HTTPException(status_code=400, detail="Informe a divisão de idade para premiação por categoria")
+
+    row = CompetitionAward(
+        competition_id=competition_id,
+        student_id=payload.student_id,
+        prize_id=payload.prize_id,
+        kind=kind,
+        age_division_id=payload.age_division_id,
+        weight_class_id=payload.weight_class_id,
+        gender=payload.gender,
+        modality=payload.modality,
+        place=int(payload.place),
+    )
+    session.add(row)
+    try:
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail="Premiação/medalha duplicada para este alvo/posição ou atleta") from exc
+    await session.refresh(row)
+
+    student_name = student.name
+    reward: str | None = None
+    if payload.prize_id is not None:
+        reward = prize.reward if prize is not None else None
+
+    base = schemas.CompetitionAwardRead.model_validate(row)
+    return base.model_copy(update={"student_name": student_name, "reward": reward})
+
+
+async def delete_award(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+    award_id: int,
+) -> None:
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+    r = await session.execute(
+        select(CompetitionAward).where(
+            CompetitionAward.id == award_id,
+            CompetitionAward.competition_id == competition_id,
+        )
+    )
+    row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Registro de medalha/pódio não encontrado")
+    await session.delete(row)
+    await session.commit()
 
 async def list_organizer_kpis(session: AsyncSession, user: User) -> list[schemas.CompetitionKpiItem]:
     if user.role not in ("superadmin", "admin") or (user.role == "admin" and user.dojo_id is None):
@@ -162,6 +388,9 @@ async def list_organizer_kpis(session: AsyncSession, user: User) -> list[schemas
 async def create_competition(session: AsyncSession, user: User, payload: schemas.CompetitionCreate) -> Competition:
     if user.role != "admin" or user.dojo_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas admin do dojo cria competições")
+    em = (payload.event_modality or "").strip() or None
+    if payload.is_published and not em:
+        raise HTTPException(status_code=400, detail="Defina a modalidade do evento antes de publicar")
     comp = Competition(
         organizer_dojo_id=user.dojo_id,
         name=payload.name,
@@ -172,6 +401,7 @@ async def create_competition(session: AsyncSession, user: User, payload: schemas
         is_published=payload.is_published,
         registration_fee_amount=payload.registration_fee_amount,
         registration_payment_instructions=payload.registration_payment_instructions,
+        event_modality=em,
     )
     session.add(comp)
     await session.commit()
@@ -187,8 +417,13 @@ async def update_competition(
         raise HTTPException(status_code=404, detail="Competição não encontrada")
     _assert_organizer(comp, user)
     data = payload.model_dump(exclude_unset=True)
+    if "event_modality" in data:
+        data["event_modality"] = (data.get("event_modality") or "").strip() or None
     for k, v in data.items():
         setattr(comp, k, v)
+    # Se ficou publicado, exige modalidade configurada.
+    if comp.is_published and not (getattr(comp, "event_modality", None) or "").strip():
+        raise HTTPException(status_code=400, detail="Defina a modalidade do evento antes de publicar")
     comp.updated_at = _now()
     await session.commit()
     await session.refresh(comp)
@@ -1105,17 +1340,29 @@ async def attach_registration_payment_receipt(
 
 
 async def confirm_registration_payment(
-    session: AsyncSession, user: User, competition_id: int, registration_id: int
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+    registration_id: int,
+    *,
+    force_without_receipt: bool = False,
 ) -> CompetitionRegistration:
     comp = await get_competition(session, user, competition_id)
     _assert_organizer(comp, user)
     reg = await session.get(CompetitionRegistration, registration_id)
     if reg is None or reg.competition_id != competition_id:
         raise HTTPException(status_code=404, detail="Inscrição não encontrada")
-    if reg.payment_status != REG_PAY_PENDING_CONFIRMATION:
-        raise HTTPException(
-            status_code=400, detail="Inscrição sem comprovante pendente de confirmação"
-        )
+    if reg.payment_status == REG_PAY_PENDING_CONFIRMATION:
+        pass
+    elif reg.payment_status == REG_PAY_PENDING_PAYMENT:
+        # Confirmação manual (sem comprovante) precisa ser explícita.
+        if not force_without_receipt:
+            raise HTTPException(
+                status_code=400,
+                detail="Sem comprovante enviado. Para confirmar manualmente, envie force_without_receipt=true.",
+            )
+    else:
+        raise HTTPException(status_code=400, detail="Pagamento não está pendente de confirmação")
     reg.payment_status = REG_PAY_CONFIRMED
     reg.payment_confirmed_at = _now()
     reg.updated_at = _now()

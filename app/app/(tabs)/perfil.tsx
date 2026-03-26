@@ -7,7 +7,9 @@ import {
   BookOpen,
   ChevronRight,
   KeyRound,
+  Medal,
   MessageSquare,
+  Pencil,
   Target,
   Trophy,
 } from "lucide-react-native";
@@ -28,7 +30,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Line, Polygon } from "react-native-svg";
+import Svg, { Circle, Line, Polygon, Path, Rect } from "react-native-svg";
 
 import { api, clearPersistedSession, persistSession } from "../../src/api/client";
 import { useAuthStore } from "../../src/store/auth";
@@ -52,9 +54,16 @@ type StudentMe = {
   graduacao: string | null;
   modalidade: string | null;
   notes: string | null;
+  master_notes?: string | null;
+  master_notes_date?: string | null;
   grau: number;
+  birth_date?: string | null;
+  weight_kg?: number | null;
   /** Quando false, modalidade(s) no catálogo sem sistema de faixas/graus */
   exibir_graduacao_no_perfil?: boolean;
+  /** Listas configuradas pelo professor no painel web */
+  academic_mastered_techniques?: string[];
+  academic_next_objectives?: string[];
 };
 
 type DojoMe = {
@@ -69,6 +78,21 @@ type CheckInRead = {
   occurred_at: string;
 };
 
+type MyCompetitionRegistration = {
+  competition_id: number;
+};
+
+type MyAward = {
+  id: number;
+  competition_id: number;
+  place: number;
+  kind: string;
+  modality: string;
+  gender: string;
+  reward?: string | null;
+  awarded_at: string;
+};
+
 type MySkills = {
   skills: string[];
   ratings: number[];
@@ -80,6 +104,59 @@ function resolveAvatarUri(url: string | null | undefined): { uri: string } | nul
   const base = api.defaults.baseURL?.replace(/\/$/, "") ?? "";
   if (url.startsWith("http")) return { uri: url };
   return { uri: `${base}${url.startsWith("/") ? "" : "/"}${url}` };
+}
+
+function formatBirthDatePt(dateStr: string | null | undefined): string {
+  const s = (dateStr || "").trim();
+  if (!s) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return s;
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
+
+function formatBirthDateForInput(dateStr: string | null | undefined): string {
+  const s = (dateStr || "").trim();
+  if (!s) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return s;
+  const [, y, mo, d] = m;
+  return `${d}-${mo}-${y}`;
+}
+
+function parseBirthDateInputToIso(dateInput: string): string | null {
+  const raw = (dateInput || "").trim();
+  if (!raw) return null;
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const d = Number(dd);
+  const mo = Number(mm);
+  const y = Number(yyyy);
+  if (!Number.isInteger(d) || !Number.isInteger(mo) || !Number.isInteger(y)) return null;
+  if (y < 1900 || y > 2100) return null;
+  if (mo < 1 || mo > 12) return null;
+  const maxDay = new Date(y, mo, 0).getDate(); // dia 0 do próximo mês = último dia do mês atual
+  if (d < 1 || d > maxDay) return null;
+  const mm2 = String(mo).padStart(2, "0");
+  const dd2 = String(d).padStart(2, "0");
+  return `${y}-${mm2}-${dd2}`;
+}
+
+function maskBirthDateInput(text: string): string {
+  const digits = String(text || "").replace(/\D/g, "").slice(0, 8); // DDMMAAAA
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  if (digits.length <= 2) return dd;
+  if (digits.length <= 4) return `${dd}-${mm}`;
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+function formatWeightKg(weight: number | null | undefined): string {
+  if (weight === null || weight === undefined || Number.isNaN(weight)) return "—";
+  const w = Math.round(weight * 10) / 10;
+  return `${w.toString().replace(".", ",")} kg`;
 }
 
 function SectionHeader({
@@ -176,6 +253,11 @@ export default function PerfilScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
+  const [isPersonalDataOpen, setIsPersonalDataOpen] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [birthDateInput, setBirthDateInput] = useState("");
+  const [weightKgInput, setWeightKgInput] = useState("");
+
   const { data: me } = useQuery({
     queryKey: ["user-me"],
     queryFn: async () => {
@@ -193,6 +275,29 @@ export default function PerfilScreen() {
     },
     enabled: !!user && user?.role === "aluno",
     retry: false,
+  });
+
+  const personalDataMutation = useMutation({
+    mutationFn: async (payload: {
+      name?: string | null;
+      birth_date?: string | null;
+      weight_kg?: number | null;
+    }) => {
+      const res = await api.patch<StudentMe>("/api/students/me", payload);
+      return res.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-me"] });
+      setIsPersonalDataOpen(false);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as any)?.response?.data?.detail ??
+        (err instanceof Error ? err.message : null) ??
+        "Não foi possível salvar seus dados. Tente novamente.";
+      if (Platform.OS === "web") alert(String(msg));
+      else Alert.alert("Erro", String(msg));
+    },
   });
 
   const { data: dojo } = useQuery({
@@ -217,6 +322,28 @@ export default function PerfilScreen() {
       const res = await api.get<CheckInRead[]>(
         `/api/check-in/my/range?start_date=${startDateStr}&end_date=${endDate}`
       );
+      return res.data;
+    },
+    enabled: !!user && user?.role === "aluno",
+    retry: false,
+  });
+
+  const { data: myCompetitionRegistrations } = useQuery({
+    queryKey: ["my-competition-registrations"],
+    queryFn: async () => {
+      const res = await api.get<MyCompetitionRegistration[]>(
+        "/api/competitions/me/my-registrations",
+      );
+      return res.data;
+    },
+    enabled: !!user && user?.role === "aluno",
+    retry: false,
+  });
+
+  const { data: myAwards } = useQuery({
+    queryKey: ["my-awards"],
+    queryFn: async () => {
+      const res = await api.get<MyAward[]>("/api/students/me/awards");
       return res.data;
     },
     enabled: !!user && user?.role === "aluno",
@@ -403,6 +530,10 @@ export default function PerfilScreen() {
   const showGraduacaoNoPerfil = student?.exibir_graduacao_no_perfil !== false;
 
   const checkinsCount = checkinsRange?.length ?? 0;
+  const competitionsCount = new Set(
+    (myCompetitionRegistrations ?? []).map((r) => r.competition_id),
+  ).size;
+  const medalsCount = myAwards?.length ?? 0;
   const expectedSessions = 12;
   const assiduidadePercent = Math.min(100, Math.round((checkinsCount / expectedSessions) * 100));
 
@@ -415,13 +546,25 @@ export default function PerfilScreen() {
   const contentWidth = width - tokens.space.lg * 2;
   const twoColItemWidth = (contentWidth - gridGap) / 2;
   const modalityDisplay = student?.modalidade?.trim() || null;
+  const techniquesFromProfessor = (student?.academic_mastered_techniques ?? []).filter(
+    (s) => String(s).trim(),
+  );
   const techniquesBullets =
-    modalityDisplay
-      ? modalityDisplay
-          .split(/[,;/]/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    techniquesFromProfessor.length > 0
+      ? techniquesFromProfessor.map((s) => String(s).trim())
+      : modalityDisplay
+        ? modalityDisplay
+            .split(/[,;/]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+  const objectivesFromProfessor = (student?.academic_next_objectives ?? []).filter((s) =>
+    String(s).trim(),
+  );
+  const objectivesBullets =
+    objectivesFromProfessor.length > 0
+      ? objectivesFromProfessor.map((s) => String(s).trim())
+      : ["Evolução contínua", "Novas técnicas com o professor"];
 
   const skillsLabels = mySkills?.skills?.length === 5 ? mySkills.skills : ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"];
   const skillsRatings = mySkills?.ratings?.length === 5 ? mySkills.ratings : [0, 0, 0, 0, 0];
@@ -513,12 +656,50 @@ export default function PerfilScreen() {
                   label: "Modalidade",
                   value: student?.modalidade?.trim() ? student.modalidade.trim() : "—",
                 });
+                rows.push({
+                  label: "Nascimento",
+                  value: formatBirthDatePt(student?.birth_date),
+                });
+                rows.push({
+                  label: "Peso",
+                  value: formatWeightKg(student?.weight_kg),
+                });
               }
               rows.push({ label: "Dojo", value: dojo?.name ?? "—" });
               return rows.map((r, i) => (
                 <ProfileField key={`${r.label}-${i}`} label={r.label} value={r.value} isLast={i === rows.length - 1} />
               ));
             })()}
+
+            {isAluno && (
+              <Pressable
+                onPress={() => {
+                  setNameInput((student?.name ?? "") as string);
+                  setBirthDateInput(formatBirthDateForInput(student?.birth_date));
+                  setWeightKgInput(
+                    student?.weight_kg === null || student?.weight_kg === undefined
+                      ? ""
+                      : String(student.weight_kg).replace(".", ","),
+                  );
+                  setIsPersonalDataOpen(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Editar dados pessoais"
+                style={{
+                  marginTop: tokens.space.md,
+                  alignSelf: "flex-start",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.14)",
+                  borderRadius: 999,
+                  width: 36,
+                  height: 36,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Pencil size={18} color={tokens.color.textOnPrimary} strokeWidth={2.4} />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -679,7 +860,9 @@ export default function PerfilScreen() {
                 PRÓXIMOS OBJETIVOS
               </Text>
               <Text style={{ color: "rgba(255,255,255,0.92)", fontSize: 12, lineHeight: 18 }}>
-                • Evolução contínua{"\n"}• Novas técnicas com o professor
+                {objectivesBullets.length > 0
+                  ? objectivesBullets.map((t) => `• ${t}`).join("\n")
+                  : "• —"}
               </Text>
             </View>
 
@@ -748,6 +931,137 @@ export default function PerfilScreen() {
             </View>
           </View>
         </View>
+
+
+        {isAluno && (
+          <View style={{ marginBottom: tokens.space.xl }}>
+            <SectionHeader
+              title="Caminhos do Guerreiro"
+              subtitle="Sabedoria ancestral para moldar o caráter e o foco do guerreiro moderno."
+            />
+            <View
+              style={{
+                width: "100%",
+                backgroundColor: "#0E1F2A", // tinta (azul-noite)
+                borderRadius: tokens.radius.lg,
+                padding: tokens.space.lg,
+                borderWidth: 1,
+                borderColor: "rgba(184,158,93,0.28)", // dourado sutil
+                overflow: "hidden",
+              }}
+            >
+              {/* Fundo sutil (ensō + ondas), sem interferir no toque */}
+              <View pointerEvents="none" style={{ position: "absolute", inset: 0, opacity: 0.4 }}>
+                <Svg width="100%" height="100%">
+                  <Rect x="0" y="0" width="100%" height="100%" fill="#0E1F2A" />
+                  {/* “ensō” minimalista */}
+                  <Circle
+                    cx="82%"
+                    cy="30%"
+                    r="56"
+                    fill="transparent"
+                    stroke="rgba(255,255,255,0.12)"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeDasharray="220 80"
+                    strokeDashoffset="40"
+                  />
+                  {/* ondas / linhas leves */}
+                  <Path
+                    d="M-10 120 C 40 96, 92 146, 150 120 S 260 96, 340 120 S 430 146, 520 120"
+                    stroke="rgba(184,158,93,0.16)"
+                    strokeWidth="2"
+                    fill="none"
+                    opacity="0.95"
+                  />
+                  <Path
+                    d="M-30 146 C 30 126, 100 170, 170 146 S 300 126, 390 146 S 520 170, 640 146"
+                    stroke="rgba(255,255,255,0.10)"
+                    strokeWidth="2"
+                    fill="none"
+                    opacity="0.7"
+                  />
+                </Svg>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: tokens.space.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: tokens.space.sm, flexShrink: 1 }}>
+                  <MessageSquare size={18} color={tokens.color.primary} strokeWidth={2} />
+                  <Text
+                    style={{
+                      color: "rgba(255,255,255,0.92)",
+                      fontWeight: "900",
+                      fontSize: tokens.text.sm,
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    Mensagem do dia
+                  </Text>
+                </View>
+
+                {/* Carimbo (hanko) */}
+                <View
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 12,
+                    backgroundColor: "rgba(163, 0, 0, 0.92)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.22)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 10,
+                    elevation: 3,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "rgba(255,255,255,0.94)",
+                      fontWeight: "900",
+                      fontSize: 13,
+                      letterSpacing: 1,
+                    }}
+                  >
+                    武士道
+                  </Text>
+                </View>
+              </View>
+
+              <Text
+                style={{
+                  marginTop: tokens.space.md,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: tokens.text.md,
+                  lineHeight: 22,
+                  fontWeight: "600",
+                }}
+              >
+                {student?.master_notes?.trim()
+                  ? student.master_notes.trim()
+                  : student?.notes?.trim()
+                    ? student.notes.trim()
+                    : "Nenhuma nota do mestre."}
+              </Text>
+
+              {student?.master_notes_date ? (
+                <Text
+                  style={{
+                    marginTop: tokens.space.md,
+                    color: "rgba(255,255,255,0.62)",
+                    fontSize: tokens.text.xs,
+                    fontWeight: "700",
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  Atualizado em {student.master_notes_date}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        )}
 
         <SectionHeader
           title="Meus status detalhados"
@@ -824,7 +1138,7 @@ export default function PerfilScreen() {
                 marginTop: tokens.space.sm,
               }}
             >
-              —
+              {competitionsCount}
             </Text>
             <Text
               style={{
@@ -837,6 +1151,44 @@ export default function PerfilScreen() {
               }}
             >
               COMPETIÇÕES DISPUTADAS
+            </Text>
+          </View>
+
+          <View
+            style={{
+              width: isVeryNarrow ? "100%" : twoColItemWidth,
+              backgroundColor: tokens.color.borderSubtle,
+              borderRadius: tokens.radius.lg,
+              padding: tokens.space.lg,
+              alignItems: "center",
+              minHeight: 132,
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "rgba(27,48,63,0.06)",
+            }}
+          >
+            <Medal size={26} color={tokens.color.primary} strokeWidth={2} />
+            <Text
+              style={{
+                color: tokens.color.textPrimary,
+                fontSize: tokens.text["2xl"],
+                fontWeight: "800",
+                marginTop: tokens.space.sm,
+              }}
+            >
+              {medalsCount}
+            </Text>
+            <Text
+              style={{
+                color: tokens.color.textMuted,
+                fontSize: 10,
+                textAlign: "center",
+                marginTop: 6,
+                fontWeight: "700",
+                letterSpacing: 0.6,
+              }}
+            >
+              MEDALHAS
             </Text>
           </View>
 
@@ -875,47 +1227,6 @@ export default function PerfilScreen() {
               }}
             >
               CHECK-INS (30 DIAS)
-            </Text>
-          </View>
-
-          <View
-            style={{
-              width: isVeryNarrow ? "100%" : twoColItemWidth,
-              backgroundColor: tokens.color.borderSubtle,
-              borderRadius: tokens.radius.lg,
-              padding: tokens.space.lg,
-              alignItems: "center",
-              minHeight: 132,
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: "rgba(27,48,63,0.06)",
-            }}
-          >
-            <MessageSquare size={26} color={tokens.color.primary} strokeWidth={2} />
-            <Text
-              style={{
-                color: tokens.color.textPrimary,
-                fontSize: tokens.text.sm,
-                textAlign: "center",
-                marginTop: tokens.space.sm,
-                lineHeight: 20,
-                fontWeight: "600",
-              }}
-              numberOfLines={4}
-            >
-              {student?.notes?.trim() ? student.notes.trim() : "Nenhuma nota do mestre."}
-            </Text>
-            <Text
-              style={{
-                color: tokens.color.textMuted,
-                fontSize: 10,
-                textAlign: "center",
-                marginTop: 8,
-                fontWeight: "700",
-                letterSpacing: 0.6,
-              }}
-            >
-              NOTAS DO MESTRE
             </Text>
           </View>
         </View>
@@ -960,6 +1271,8 @@ export default function PerfilScreen() {
             </View>
           </View>
         )}
+
+        
 
         {/* Navegação inferior */}
         <View
@@ -1169,7 +1482,7 @@ export default function PerfilScreen() {
                 borderRadius: tokens.radius.md,
                 paddingHorizontal: tokens.space.md,
                 paddingVertical: 10,
-                color: tokens.color.textOnPrimary,
+                color: tokens.color.textPrimary,
                 backgroundColor: tokens.color.bgBody,
               }}
             />
@@ -1193,7 +1506,7 @@ export default function PerfilScreen() {
                 borderRadius: tokens.radius.md,
                 paddingHorizontal: tokens.space.md,
                 paddingVertical: 10,
-                color: tokens.color.textOnPrimary,
+                color: tokens.color.textPrimary,
                 backgroundColor: tokens.color.bgBody,
               }}
             />
@@ -1217,7 +1530,7 @@ export default function PerfilScreen() {
                 borderRadius: tokens.radius.md,
                 paddingHorizontal: tokens.space.md,
                 paddingVertical: 10,
-                color: tokens.color.textOnPrimary,
+                color: tokens.color.textPrimary,
                 backgroundColor: tokens.color.bgBody,
               }}
             />
@@ -1297,6 +1610,205 @@ export default function PerfilScreen() {
                 <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "800" }}>
                   Salvar
                 </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isPersonalDataOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!personalDataMutation.isPending) setIsPersonalDataOpen(false);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            padding: tokens.space.lg,
+            justifyContent: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: tokens.color.bgCard,
+              borderRadius: tokens.radius.lg,
+              padding: tokens.space.lg,
+              borderWidth: 1,
+              borderColor: tokens.color.borderStrong,
+            }}
+          >
+            <Text
+              style={{
+                color: tokens.color.textOnPrimary,
+                fontSize: tokens.text.md,
+                fontWeight: "800",
+                marginBottom: tokens.space.md,
+              }}
+            >
+              Dados pessoais
+            </Text>
+
+            <Text style={{ color: tokens.color.textMuted, fontSize: tokens.text.xs }}>
+              Atualize seu nome, data de nascimento (DD-MM-AAAA) e seu peso (kg).
+            </Text>
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Nome
+            </Text>
+            <TextInput
+              value={nameInput}
+              onChangeText={setNameInput}
+              editable={!personalDataMutation.isPending}
+              placeholder="Seu nome"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Data de nascimento
+            </Text>
+            <TextInput
+              value={birthDateInput}
+              onChangeText={(t) => setBirthDateInput(maskBirthDateInput(t))}
+              editable={!personalDataMutation.isPending}
+              keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+              placeholder="31-12-1999"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.md }} />
+
+            <Text style={{ color: tokens.color.textOnPrimary, fontSize: tokens.text.xs }}>
+              Peso (kg)
+            </Text>
+            <TextInput
+              value={weightKgInput}
+              onChangeText={setWeightKgInput}
+              editable={!personalDataMutation.isPending}
+              keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+              placeholder="72,5"
+              placeholderTextColor={tokens.color.textMuted}
+              style={{
+                marginTop: 6,
+                borderWidth: 1,
+                borderColor: tokens.color.borderStrong,
+                borderRadius: tokens.radius.md,
+                paddingHorizontal: tokens.space.md,
+                paddingVertical: 10,
+                color: tokens.color.textPrimary,
+                backgroundColor: tokens.color.bgBody,
+              }}
+            />
+
+            <View style={{ height: tokens.space.lg }} />
+
+            <View style={{ flexDirection: "row", gap: tokens.space.sm }}>
+              <Pressable
+                onPress={() => {
+                  if (!personalDataMutation.isPending) setIsPersonalDataOpen(false);
+                }}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: tokens.color.borderStrong,
+                  borderRadius: tokens.radius.full,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  backgroundColor: "transparent",
+                }}
+              >
+                <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "700" }}>
+                  Cancelar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  const nameRaw = (nameInput || "").trim();
+                  const birthRaw = (birthDateInput || "").trim();
+                  const weightRaw = (weightKgInput || "").trim();
+
+                  const payload: {
+                    name?: string | null;
+                    birth_date?: string | null;
+                    weight_kg?: number | null;
+                  } = {};
+
+                  if (!nameRaw) {
+                    if (Platform.OS === "web") alert("Informe seu nome.");
+                    else Alert.alert("Atenção", "Informe seu nome.");
+                    return;
+                  }
+                  payload.name = nameRaw;
+
+                  if (birthRaw) {
+                    const iso = parseBirthDateInputToIso(birthRaw);
+                    if (!iso) {
+                      if (Platform.OS === "web") alert("Use o formato DD-MM-AAAA (ex.: 31-12-1999).");
+                      else Alert.alert("Atenção", "Use o formato DD-MM-AAAA (ex.: 31-12-1999).");
+                      return;
+                    }
+                    payload.birth_date = iso;
+                  } else payload.birth_date = null;
+
+                  if (weightRaw) {
+                    const w = Number(weightRaw.replace(",", "."));
+                    if (!Number.isFinite(w) || w <= 0 || w > 500) {
+                      if (Platform.OS === "web") alert("Informe um peso válido em kg.");
+                      else Alert.alert("Atenção", "Informe um peso válido em kg.");
+                      return;
+                    }
+                    payload.weight_kg = w;
+                  } else {
+                    payload.weight_kg = null;
+                  }
+
+                  personalDataMutation.mutate(payload);
+                }}
+                disabled={personalDataMutation.isPending}
+                style={{
+                  flex: 1,
+                  borderRadius: tokens.radius.full,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  backgroundColor: tokens.color.primary,
+                  opacity: personalDataMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {personalDataMutation.isPending ? (
+                  <ActivityIndicator color={tokens.color.textOnPrimary} />
+                ) : (
+                  <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "800" }}>
+                    Salvar
+                  </Text>
+                )}
               </Pressable>
             </View>
           </View>

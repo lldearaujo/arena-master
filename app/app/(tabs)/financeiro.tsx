@@ -87,17 +87,17 @@ export default function FinanceiroScreen() {
     refetchOnWindowFocus: true,
   });
 
-  const token = useAuthStore((state) => state.token);
+  const tokensState = useAuthStore((state) => state.tokens);
 
   const uploadReceiptMutation = useMutation({
     mutationFn: async (payload: { paymentId: number; formData: FormData }) => {
       await api.post(
         `/api/finance/me/payments/${payload.paymentId}/receipt`,
         payload.formData,
-        token
+        tokensState?.accessToken
           ? {
               headers: {
-                Authorization: `Bearer ${token}`,
+                Authorization: `Bearer ${tokensState.accessToken}`,
                 // Garante que o backend reconheça como multipart
                 "Content-Type": "multipart/form-data",
               },
@@ -151,12 +151,14 @@ export default function FinanceiroScreen() {
           const blob = await response.blob();
           form.append("file", blob, "comprovante.jpg");
         } else {
-          form.append("file", {
-            // @ts-expect-error - React Native FormData file (native)
-            uri: asset.uri,
-            name: "comprovante.jpg",
-            type: asset.mimeType ?? "image/jpeg",
-          });
+          form.append(
+            "file",
+            {
+              uri: asset.uri,
+              name: "comprovante.jpg",
+              type: asset.mimeType ?? "image/jpeg",
+            } as any,
+          );
         }
 
         await uploadReceiptMutation.mutateAsync({ paymentId, formData: form });
@@ -944,7 +946,6 @@ export default function FinanceiroScreen() {
                               link.click();
                               document.body.removeChild(link);
                             } catch {
-                              // @ts-expect-error window global no web
                               window.location.href = url;
                             }
                           } else {

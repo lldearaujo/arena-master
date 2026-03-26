@@ -36,6 +36,42 @@ class Settings(BaseSettings):
     # Opcional: chave servidor FCM (legada) para push ao app. Sem isso, notificações ficam só no banco.
     fcm_server_key: str | None = Field(None, alias="FCM_SERVER_KEY")
 
+    # Recomendado: FCM HTTP v1 (OAuth2 via Service Account)
+    # - FCM_PROJECT_ID: id do projeto Firebase/Google Cloud (ex.: "arena-master-4c0ea")
+    # - FCM_SERVICE_ACCOUNT_FILE: caminho para o JSON da service account
+    # - FCM_SERVICE_ACCOUNT_JSON: conteúdo JSON (string) da service account (alternativa ao file)
+    fcm_project_id: str | None = Field(None, alias="FCM_PROJECT_ID")
+    fcm_service_account_file: str | None = Field(None, alias="FCM_SERVICE_ACCOUNT_FILE")
+    fcm_service_account_json: str | None = Field(None, alias="FCM_SERVICE_ACCOUNT_JSON")
+
+    # Webhook n8n: ensinamento diário do Bushido (por usuário)
+    bushido_webhook_url: str = Field(
+        "https://n8n.ideiasobria.online/webhook/consulta-bushido",
+        alias="BUSHIDO_WEBHOOK_URL",
+    )
+    bushido_webhook_method: str = Field("POST", alias="BUSHIDO_WEBHOOK_METHOD")
+
+    @field_validator("bushido_webhook_method", mode="before")
+    @classmethod
+    def _normalize_bushido_method(cls, v):
+        raw = (str(v or "").strip().upper()) or "POST"
+        if raw not in {"POST", "GET"}:
+            return "POST"
+        return raw
+
+    @field_validator("bushido_webhook_url", mode="before")
+    @classmethod
+    def _normalize_bushido_url(cls, v):
+        raw = (str(v or "").strip() if v is not None else "").strip()
+        if not raw:
+            return raw
+        if raw.startswith("https://.") or raw.startswith("http://."):
+            return raw
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+        # Permite usuário setar "n8n.ideiasobria.online/..." sem scheme
+        return f"https://{raw}"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, v):
@@ -59,9 +95,7 @@ class Settings(BaseSettings):
         # tanto na raiz do repositório quanto em `backend/`, sem depender do cwd.
         env_file = (
             str(_REPO_ROOT / ".env"),
-            str(_REPO_ROOT / ".env.production"),
             str(_BACKEND_ROOT / ".env"),
-            str(_BACKEND_ROOT / ".env.production"),
         )
         env_file_encoding = "utf-8"
         case_sensitive = False

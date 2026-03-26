@@ -8,6 +8,8 @@ from app.models.turma import Turma  # noqa: F401
 from app.models.turma_enrollment import TurmaEnrollment  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.mural_post import MuralPost  # noqa: F401
+from app.models.mural_comment import MuralComment  # noqa: F401
+from app.models.mural_like import MuralPostLike, MuralCommentLike  # noqa: F401
 from app.models.skills import DojoSkillsConfig, StudentSkillsRating  # noqa: F401
 from app.models.finance import (  # noqa: F401
     Payment,
@@ -25,6 +27,7 @@ from app.models.competition import (  # noqa: F401
     CompetitionMatch,
     CompetitionRegistration,
     CompetitionWeightClass,
+    CompetitionAward,
     NotificationOutbox,
 )
 from app.models.dojo_modalidade import DojoModalidade  # noqa: F401

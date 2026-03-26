@@ -1,6 +1,6 @@
 from datetime import date
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class StudentBase(BaseModel):
@@ -8,8 +8,11 @@ class StudentBase(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     birth_date: date | None = None
+    weight_kg: float | None = None
     modalidade: str | None = None
     notes: str | None = None
+    master_notes: str | None = None
+    master_notes_date: date | None = None
 
 
 class StudentCreate(StudentBase):
@@ -24,11 +27,16 @@ class StudentUpdate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     birth_date: date | None = None
+    weight_kg: float | None = Field(default=None, ge=0, le=500)
     modalidade: str | None = None
     notes: str | None = None
+    master_notes: str | None = None
+    master_notes_date: date | None = None
     faixa_id: int | None = None
     grau: int | None = None
     is_active: bool | None = None
+    academic_mastered_techniques: list[str] | None = None
+    academic_next_objectives: list[str] | None = None
 
 
 class StudentRead(StudentBase):
@@ -45,9 +53,32 @@ class StudentRead(StudentBase):
     # Sobrescreve StudentBase.email: EmailStr rejeita domínios como `.local` (seeds / imports).
     # Na leitura, o valor vem do banco e precisa ser serializado sem falhar.
     email: str | None = None
+    academic_mastered_techniques: list[str] = Field(default_factory=list)
+    academic_next_objectives: list[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
+
+
+class StudentCompetitionAwardRead(BaseModel):
+    id: int
+    competition_id: int
+    kind: str
+    age_division_id: int | None = None
+    weight_class_id: int | None = None
+    gender: str
+    modality: str
+    place: int
+    awarded_at: str  # isoformat (evita timezone edge cases no app)
+    reward: str | None = None
+    competition_name: str | None = None
+    reference_year: int | None = None
+
+
+class StudentSelfUpdate(BaseModel):
+    name: str | None = None
+    birth_date: date | None = None
+    weight_kg: float | None = Field(default=None, ge=0, le=500)
 
 
 class StudentCreatedResponse(BaseModel):

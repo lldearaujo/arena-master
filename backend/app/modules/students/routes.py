@@ -1,9 +1,11 @@
+from datetime import date as _date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.security import get_current_admin, get_current_user
 from app.models.faixa import Faixa
@@ -38,12 +40,21 @@ async def _student_to_read(
         email=student.email,
         phone=student.phone,
         birth_date=student.birth_date,
+        weight_kg=getattr(student, "weight_kg", None),
         modalidade=modalidade_display,
         notes=student.notes,
+        master_notes=student.master_notes,
+        master_notes_date=student.master_notes_date,
         faixa_id=student.faixa_id,
         grau=student.grau,
         graduacao=graduacao,
         exibir_graduacao_no_perfil=exibir_grad,
+        academic_mastered_techniques=service.parse_academic_list(
+            student.academic_mastered_techniques
+        ),
+        academic_next_objectives=service.parse_academic_list(
+            student.academic_next_objectives
+        ),
     )
 
 
@@ -93,6 +104,12 @@ async def list_students(
             faixa_id=s.faixa_id,
             grau=s.grau,
             graduacao=graduacao,
+            academic_mastered_techniques=service.parse_academic_list(
+                s.academic_mastered_techniques
+            ),
+            academic_next_objectives=service.parse_academic_list(
+                s.academic_next_objectives
+            ),
         )
         items.append(
             schemas.StudentWithLoginRead(
@@ -143,7 +160,63 @@ async def get_me(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Aluno não encontrado para este usuário",
         )
+    # Ensina 1x/dia por usuário (best-effort; não quebra a tela se webhook falhar).
+    settings = get_settings()
+    today = _date.today()
+    # Reconsulta se ainda não tem texto (mesmo que a data tenha sido marcada).
+    if student.master_notes_date != today or not (student.master_notes or "").strip():
+        await service.refresh_master_notes_if_needed(
+            session=session,
+            student=student,
+            user=user,
+            today=today,
+            webhook_url=settings.bushido_webhook_url,
+            webhook_method=settings.bushido_webhook_method,
+        )
     return await _student_to_read(session, student)
+
+
+@router.patch("/me", response_model=schemas.StudentRead)
+async def patch_me(
+    payload: schemas.StudentSelfUpdate,
+    user: UserDep,
+    session: SessionDep,
+) -> schemas.StudentRead:
+    student = await service.get_student_for_user(session, user)
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aluno não encontrado para este usuário",
+        )
+    updated = await service.update_student_self(session, student, payload)
+    return await _student_to_read(session, updated)
+
+
+@router.get("/me/awards", response_model=list[schemas.StudentCompetitionAwardRead])
+async def my_awards(
+    user: UserDep,
+    session: SessionDep,
+) -> list[schemas.StudentCompetitionAwardRead]:
+    rows = await service.list_my_competition_awards(session, user)
+    out: list[schemas.StudentCompetitionAwardRead] = []
+    for r in rows:
+        out.append(
+            schemas.StudentCompetitionAwardRead(
+                id=r["id"],
+                competition_id=r["competition_id"],
+                kind=r["kind"],
+                age_division_id=r["age_division_id"],
+                weight_class_id=r["weight_class_id"],
+                gender=r["gender"],
+                modality=r["modality"],
+                place=r["place"],
+                awarded_at=r["awarded_at"] or "",
+                reward=r.get("reward"),
+                competition_name=r.get("competition_name"),
+                reference_year=r.get("reference_year"),
+            )
+        )
+    return out
 
 
 @router.get("/{student_id:int}", response_model=schemas.StudentRead)

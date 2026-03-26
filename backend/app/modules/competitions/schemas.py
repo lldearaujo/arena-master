@@ -16,6 +16,7 @@ class CompetitionCreate(BaseModel):
     is_published: bool = False
     registration_fee_amount: float | None = Field(default=None, ge=0)
     registration_payment_instructions: str | None = None
+    event_modality: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class CompetitionUpdate(BaseModel):
@@ -27,6 +28,7 @@ class CompetitionUpdate(BaseModel):
     is_published: bool | None = None
     registration_fee_amount: float | None = Field(default=None, ge=0)
     registration_payment_instructions: str | None = None
+    event_modality: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class CompetitionRead(BaseModel):
@@ -43,6 +45,7 @@ class CompetitionRead(BaseModel):
     federation_preset_code: str | None = None
     registration_fee_amount: float | None = None
     registration_payment_instructions: str | None = None
+    event_modality: str | None = None
     banner_url: str | None = None
     # Preenchidos na leitura (não vêm do ORM) — útil para inscrição / UI pública.
     organizer_dojo_name: str | None = None
@@ -50,6 +53,59 @@ class CompetitionRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CompetitionPrizeCreate(BaseModel):
+    kind: str = Field(..., pattern="^(category|absolute)$")
+    age_division_id: int | None = None
+    faixa_id: int | None = None
+    gender: str = Field(..., pattern="^(male|female)$")
+    modality: str = Field(..., pattern="^(gi|nogi)$")
+    place: int = Field(..., ge=1, le=10)
+    reward: str = Field(..., min_length=1, max_length=255)
+
+
+class CompetitionPrizeRead(BaseModel):
+    id: int
+    competition_id: int
+    kind: str
+    age_division_id: int | None = None
+    faixa_id: int | None = None
+    gender: str
+    modality: str
+    place: int
+    reward: str
+
+    class Config:
+        from_attributes = True
+
+
+class CompetitionAwardCreate(BaseModel):
+    student_id: int
+    prize_id: int | None = None
+    kind: str = Field(..., pattern="^(category|absolute)$")
+    age_division_id: int | None = None
+    weight_class_id: int | None = None
+    gender: str = Field(..., pattern="^(male|female)$")
+    modality: str = Field(..., pattern="^(gi|nogi)$")
+    place: int = Field(..., ge=1, le=10)
+
+
+class CompetitionAwardRead(BaseModel):
+    id: int
+    competition_id: int
+    student_id: int
+    prize_id: int | None = None
+    kind: str
+    age_division_id: int | None = None
+    weight_class_id: int | None = None
+    gender: str
+    modality: str
+    place: int
+    awarded_at: datetime
+    # preenchidos no service (não vêm do ORM) para UI/perfil
+    reward: str | None = None
+    student_name: str | None = None
 
 
 class AgeDivisionCreate(BaseModel):
@@ -217,6 +273,16 @@ class RegistrationRead(BaseModel):
 
 class RegistrationPaymentRejectBody(BaseModel):
     notes: str | None = None
+
+
+class RegistrationPaymentConfirmBody(BaseModel):
+    """Confirma pagamento de inscrição.
+
+    Por padrão, só confirma quando já há comprovante enviado (pending_confirmation).
+    Use `force_without_receipt` para permitir confirmação manual sem arquivo.
+    """
+
+    force_without_receipt: bool = False
 
 
 class PublicCompetitionRegistrationCreate(BaseModel):

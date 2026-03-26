@@ -19,14 +19,15 @@ services:
       retries: 5
 
   backend:
-    image: python:3.11-slim
+    build:
+      context: ./backend
     container_name: arena-master-backend
-    working_dir: /app/backend
-    command: bash -c "pip install --no-cache-dir -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./:/app
+      - ./backend:/app
     env_file:
-      - .env.example
+      - .env
     depends_on:
       db:
         condition: service_healthy

@@ -43,6 +43,9 @@ class Competition(Base):
     # Valor da inscrição (None ou 0 = sem cobrança; confirmação automática).
     registration_fee_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     registration_payment_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Modalidade "macro" do evento (ex.: "Jiu-Jitsu", "Judô") para filtrar catálogo do app.
+    # Deve corresponder ao texto exibido em `students.modalidade` (catálogo do dojo).
+    event_modality: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     banner_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -235,6 +238,122 @@ class CompetitionMatch(Base):
     referee_decision_used: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CompetitionPrize(Base):
+    """
+    Premiação configurável por evento.
+
+    - kind="category": premia uma categoria (divisão de idade + gênero + gi/nogi)
+    - kind="absolute": premia um absoluto (gênero + gi/nogi, opcionalmente filtrado por divisão de idade)
+    """
+
+    __tablename__ = "competition_prizes"
+    __table_args__ = (
+        UniqueConstraint(
+            "competition_id",
+            "kind",
+            "age_division_id",
+            "faixa_id",
+            "gender",
+            "modality",
+            "place",
+            name="uq_comp_prize_target_place",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    competition_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("competitions.id", ondelete="CASCADE"), index=True
+    )
+    # category | absolute
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    # opcional para absoluto; obrigatório na UI para categoria
+    age_division_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("competition_age_divisions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    faixa_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("faixas.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # male | female
+    gender: Mapped[str] = mapped_column(String(16), index=True)
+    # gi | nogi
+    modality: Mapped[str] = mapped_column(String(8), index=True)
+    # 1,2,3...
+    place: Mapped[int] = mapped_column(Integer)
+    # Ex.: "Medalha + cinturão", "R$ 200", etc.
+    reward: Mapped[str] = mapped_column(String(255))
+
+
+class CompetitionAward(Base):
+    """
+    Registro persistente de premiação (pódio/medalha) por atleta.
+
+    Diferente de `competition_prizes` (configuração do que se ganha),
+    esta tabela guarda QUEM ganhou em cada competição.
+    """
+
+    __tablename__ = "competition_awards"
+    __table_args__ = (
+        UniqueConstraint(
+            "competition_id",
+            "kind",
+            "age_division_id",
+            "weight_class_id",
+            "gender",
+            "modality",
+            "place",
+            name="uq_comp_award_target_place",
+        ),
+        UniqueConstraint(
+            "competition_id",
+            "student_id",
+            "kind",
+            "age_division_id",
+            "weight_class_id",
+            "gender",
+            "modality",
+            name="uq_comp_award_student_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    competition_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("competitions.id", ondelete="CASCADE"), index=True
+    )
+    student_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), index=True
+    )
+    prize_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("competition_prizes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # category | absolute
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    age_division_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("competition_age_divisions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    weight_class_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("competition_weight_classes.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    # male | female
+    gender: Mapped[str] = mapped_column(String(16), index=True)
+    # gi | nogi
+    modality: Mapped[str] = mapped_column(String(8), index=True)
+    # 1,2,3...
+    place: Mapped[int] = mapped_column(Integer)
+    awarded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class NotificationOutbox(Base):

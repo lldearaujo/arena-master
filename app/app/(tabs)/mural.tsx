@@ -19,6 +19,8 @@ type MuralPost = {
   pinned: boolean;
   author_name: string;
   author_avatar_url?: string | null;
+  likes_count: number;
+  liked_by_me: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -65,6 +67,50 @@ export default function MuralScreen() {
     onSuccess: () => {
       setContent("");
       queryClient.invalidateQueries({ queryKey: ["mural"] });
+    },
+  });
+
+  const likeMutation = useMutation({
+    mutationFn: async (post: MuralPost) => {
+      if (post.liked_by_me) {
+        const res = await api.delete<{ likes_count: number; liked_by_me: boolean }>(
+          `/api/mural/${post.id}/like`
+        );
+        return { postId: post.id, ...res.data };
+      }
+      const res = await api.post<{ likes_count: number; liked_by_me: boolean }>(
+        `/api/mural/${post.id}/like`
+      );
+      return { postId: post.id, ...res.data };
+    },
+    onMutate: async (post) => {
+      await queryClient.cancelQueries({ queryKey: ["mural"] });
+      const prev = queryClient.getQueryData<MuralPost[]>(["mural"]);
+
+      queryClient.setQueryData<MuralPost[]>(["mural"], (cur) => {
+        if (!cur) return cur;
+        return cur.map((p) => {
+          if (p.id !== post.id) return p;
+          const nextLiked = !p.liked_by_me;
+          const nextCount = Math.max(0, (p.likes_count ?? 0) + (nextLiked ? 1 : -1));
+          return { ...p, liked_by_me: nextLiked, likes_count: nextCount };
+        });
+      });
+
+      return { prev };
+    },
+    onError: (_err, _post, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["mural"], ctx.prev);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<MuralPost[]>(["mural"], (cur) => {
+        if (!cur) return cur;
+        return cur.map((p) =>
+          p.id === data.postId
+            ? { ...p, likes_count: data.likes_count, liked_by_me: data.liked_by_me }
+            : p
+        );
+      });
     },
   });
 
@@ -350,6 +396,27 @@ export default function MuralScreen() {
               >
                 {post.content}
               </Text>
+
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: tokens.space.sm, gap: tokens.space.sm }}>
+                <Pressable
+                  onPress={() => likeMutation.mutate(post)}
+                  style={{
+                    paddingHorizontal: tokens.space.md,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: post.liked_by_me ? "rgba(184,158,93,0.9)" : "rgba(255,255,255,0.18)",
+                    backgroundColor: post.liked_by_me ? "rgba(184,158,93,0.18)" : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "800", fontSize: tokens.text.xs }}>
+                    ♥ {post.liked_by_me ? "Curtiu" : "Curtir"}
+                  </Text>
+                </Pressable>
+                <Text style={{ color: tokens.color.textMuted, fontSize: tokens.text.xs }}>
+                  {post.likes_count ?? 0} curtida{(post.likes_count ?? 0) === 1 ? "" : "s"}
+                </Text>
+              </View>
             </View>
           );
         })}

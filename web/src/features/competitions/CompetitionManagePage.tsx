@@ -12,6 +12,7 @@ import type {
   CompetitionMatch,
   CompetitionBracket,
   CompetitionMat,
+  CompetitionPrize,
   FederationPresetSummary,
   Registration,
   WeightClass,
@@ -41,7 +42,8 @@ function completedMatchAthleteStyles(m: CompetitionMatch): { red: CSSProperties;
   };
 }
 
-type Faixa = { id: number; name: string };
+type Faixa = { id: number; name: string; modalidade_id: number; modalidade_name: string };
+type ModalidadeRow = { id: number | null; name: string; em_catalogo: boolean };
 
 export function CompetitionManagePage() {
   const { id } = useParams<{ id: string }>();
@@ -69,11 +71,15 @@ export function CompetitionManagePage() {
   const [presetCode, setPresetCode] = useState("");
   const [presetMsg, setPresetMsg] = useState<string | null>(null);
   const [manageTab, setManageTab] = useState<"geral" | "inscritos" | "financeiro" | "operacao" | "podios">("geral");
+  const [financeFilter, setFinanceFilter] = useState<
+    "all" | "pending_confirmation" | "pending_payment" | "confirmed" | "rejected" | "not_applicable"
+  >("pending_confirmation");
   const [feeAmount, setFeeAmount] = useState("");
   const [feeInstr, setFeeInstr] = useState("");
   const [inscritosQ, setInscritosQ] = useState("");
   const [opSubTab, setOpSubTab] = useState<"pesagem" | "chaves" | "tatames" | "lutas">("pesagem");
   const [eventStartsAtLocal, setEventStartsAtLocal] = useState<string>("");
+  const [eventModality, setEventModality] = useState<string>("");
   const [bracketsMsg, setBracketsMsg] = useState<string | null>(null);
   const [collapsedWeighGroups, setCollapsedWeighGroups] = useState<Record<string, boolean>>({});
   const [collapsedFaixaGroups, setCollapsedFaixaGroups] = useState<Set<string>>(new Set());
@@ -84,6 +90,13 @@ export function CompetitionManagePage() {
   const [fightFilterFaixa, setFightFilterFaixa] = useState<string>("all");
   const [fightFilterAgeDivision, setFightFilterAgeDivision] = useState<number | "all">("all");
   const [fightFilterWeightClass, setFightFilterWeightClass] = useState<number | "all">("all");
+  const [prizeKind, setPrizeKind] = useState<"category" | "absolute">("category");
+  const [prizeGender, setPrizeGender] = useState<"male" | "female">("male");
+  const [prizeModality, setPrizeModality] = useState<"gi" | "nogi">("gi");
+  const [prizeAgeDivisionId, setPrizeAgeDivisionId] = useState<number | "">("");
+  const [prizeFaixaId, setPrizeFaixaId] = useState<number | "">("");
+  const [prizePlace, setPrizePlace] = useState(1);
+  const [prizeReward, setPrizeReward] = useState("");
 
   const { data: comp } = useQuery({
     queryKey: ["competition", competitionId],
@@ -98,6 +111,15 @@ export function CompetitionManagePage() {
     queryKey: ["comp-ad", competitionId],
     queryFn: async () => {
       const res = await api.get<AgeDivision[]>(`/api/competitions/${competitionId}/age-divisions`);
+      return res.data;
+    },
+    enabled: Number.isFinite(competitionId),
+  });
+
+  const { data: prizes } = useQuery({
+    queryKey: ["comp-prizes", competitionId],
+    queryFn: async () => {
+      const res = await api.get<CompetitionPrize[]>(`/api/competitions/${competitionId}/prizes`);
       return res.data;
     },
     enabled: Number.isFinite(competitionId),
@@ -129,10 +151,28 @@ export function CompetitionManagePage() {
     },
   });
 
+  const prizeFaixas = useMemo(() => {
+    const all = faixas ?? [];
+    const target = (comp?.event_modality ?? eventModality ?? "").trim().toLowerCase();
+    if (!target) return all;
+    // Faixas são por modalidade do dojo; se o evento tem modalidade definida,
+    // filtramos para evitar duplicar nomes (Branca/Azul/...) de modalidades diferentes.
+    const filtered = all.filter((f) => (f.modalidade_name || "").trim().toLowerCase() === target);
+    return filtered.length ? filtered : all;
+  }, [faixas, comp?.event_modality, eventModality]);
+
   const { data: federationPresets } = useQuery({
     queryKey: ["federation-presets"],
     queryFn: async () => {
       const res = await api.get<FederationPresetSummary[]>("/api/competitions/federation-presets");
+      return res.data;
+    },
+  });
+
+  const { data: modalidadesCatalog } = useQuery({
+    queryKey: ["modalidades-catalog"],
+    queryFn: async () => {
+      const res = await api.get<ModalidadeRow[]>("/api/modalidades/");
       return res.data;
     },
   });
@@ -1025,7 +1065,8 @@ export function CompetitionManagePage() {
     );
     setFeeInstr(comp.registration_payment_instructions ?? "");
     setEventStartsAtLocal(comp.event_starts_at ? isoToDatetimeLocalValue(comp.event_starts_at) : "");
-  }, [comp?.id, comp?.registration_fee_amount, comp?.registration_payment_instructions, comp?.event_starts_at]);
+    setEventModality((comp.event_modality ?? "").trim());
+  }, [comp?.id, comp?.registration_fee_amount, comp?.registration_payment_instructions, comp?.event_starts_at, comp?.event_modality]);
 
   const saveFeeMut = useMutation({
     mutationFn: async () => {
@@ -1057,9 +1098,50 @@ export function CompetitionManagePage() {
     },
   });
 
+  const saveEventModalityMut = useMutation({
+    mutationFn: async () => {
+      const v = eventModality.trim();
+      await api.patch(`/api/competitions/${competitionId}`, { event_modality: v || null });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["competition", competitionId] });
+      qc.invalidateQueries({ queryKey: ["competitions"] });
+    },
+  });
+
+  const addPrizeMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        kind: prizeKind,
+        age_division_id: prizeAgeDivisionId === "" ? null : Number(prizeAgeDivisionId),
+        faixa_id: prizeFaixaId === "" ? null : Number(prizeFaixaId),
+        gender: prizeGender,
+        modality: prizeModality,
+        place: prizePlace,
+        reward: prizeReward.trim(),
+      };
+      await api.post(`/api/competitions/${competitionId}/prizes`, payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["comp-prizes", competitionId] });
+      setPrizeReward("");
+    },
+  });
+
+  const delPrizeMut = useMutation({
+    mutationFn: async (prizeId: number) => {
+      await api.delete(`/api/competitions/${competitionId}/prizes/${prizeId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["comp-prizes", competitionId] });
+    },
+  });
+
   const confirmPayMut = useMutation({
-    mutationFn: async (registrationId: number) => {
-      await api.post(`/api/competitions/${competitionId}/registrations/${registrationId}/confirm-payment`);
+    mutationFn: async ({ registrationId, forceWithoutReceipt }: { registrationId: number; forceWithoutReceipt?: boolean }) => {
+      await api.post(`/api/competitions/${competitionId}/registrations/${registrationId}/confirm-payment`, {
+        force_without_receipt: Boolean(forceWithoutReceipt),
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comp-regs", competitionId] });
@@ -1096,6 +1178,21 @@ export function CompetitionManagePage() {
   function receiptHref(path: string | null | undefined) {
     if (!path) return null;
     return path.startsWith("http") ? path : `${receiptBase}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+
+  function receiptKind(path: string | null | undefined): "image" | "pdf" | "other" | "none" {
+    if (!path) return "none";
+    const p = String(path).toLowerCase();
+    if (p.includes(".pdf")) return "pdf";
+    if (p.match(/\.(png|jpg|jpeg|webp|gif)(\?|#|$)/)) return "image";
+    return "other";
+  }
+
+  function fmtDateTime(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "—";
+    return d.toLocaleString("pt-BR");
   }
 
   function paymentLabel(st: string | undefined) {
@@ -1285,6 +1382,241 @@ export function CompetitionManagePage() {
 
         <div style={{ marginTop: 8, fontSize: 13, color: tokens.color.textMuted }}>
           Atual: {comp?.event_starts_at ? formatIsoAsPtBr(comp.event_starts_at) : "—"}
+        </div>
+      </Section>
+
+      <Section title="Modalidade do evento (catálogo do app)">
+        <p style={{ fontSize: 14, color: tokens.color.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
+          Define quais alunos verão este evento no app. O evento só aparece para alunos cuja modalidade do perfil corresponda à modalidade selecionada aqui.
+          Para publicar, a modalidade precisa estar definida.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Modalidade</span>
+            <select
+              value={eventModality}
+              onChange={(e) => setEventModality(e.target.value)}
+              style={{
+                padding: 8,
+                borderRadius: tokens.radius.sm,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                minWidth: 260,
+              }}
+            >
+              <option value="">— Selecione —</option>
+              {(modalidadesCatalog ?? [])
+                .filter((m) => m.em_catalogo)
+                .map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            disabled={saveEventModalityMut.isPending}
+            onClick={() => saveEventModalityMut.mutate()}
+            style={{
+              padding: "10px 16px",
+              fontWeight: 600,
+              backgroundColor: tokens.color.primary,
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              height: 40,
+            }}
+          >
+            {saveEventModalityMut.isPending ? "Guardando..." : "Guardar modalidade"}
+          </button>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 13, color: tokens.color.textMuted }}>
+          Atual: {comp?.event_modality?.trim() ? comp.event_modality.trim() : "—"}
+        </div>
+      </Section>
+
+      <Section title="Premiações (categorias e absolutos)">
+        <p style={{ fontSize: 14, color: tokens.color.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
+          Configure as premiações por categoria e/ou por absoluto. Use “Categoria” para premiar cada divisão (idade + gênero + modalidade).
+          Use “Absoluto” para premiar a categoria absoluta (gênero + modalidade) — opcionalmente você pode amarrar a uma divisão de idade.
+        </p>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 160px", minWidth: 160 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Tipo</span>
+            <select
+              value={prizeKind}
+              onChange={(e) => setPrizeKind(e.target.value as any)}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="category">Categoria</option>
+              <option value="absolute">Absoluto</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 160px", minWidth: 160 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Gênero</span>
+            <select
+              value={prizeGender}
+              onChange={(e) => setPrizeGender(e.target.value as any)}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="male">Masculino</option>
+              <option value="female">Feminino</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 160px", minWidth: 160 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Modalidade (Gi/No-Gi)</span>
+            <select
+              value={prizeModality}
+              onChange={(e) => setPrizeModality(e.target.value as any)}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="gi">Gi</option>
+              <option value="nogi">No-Gi</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "2 1 240px", minWidth: 220 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>
+              Divisão de idade {prizeKind === "category" ? "(obrigatória)" : "(opcional)"}
+            </span>
+            <select
+              value={prizeAgeDivisionId}
+              onChange={(e) => setPrizeAgeDivisionId(e.target.value === "" ? "" : Number(e.target.value))}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="">—</option>
+              {(divisions ?? []).map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 200px", minWidth: 180 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Faixa (opcional)</span>
+            <select
+              value={prizeFaixaId}
+              onChange={(e) => setPrizeFaixaId(e.target.value === "" ? "" : Number(e.target.value))}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="">—</option>
+              {prizeFaixas.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 1 140px", minWidth: 120 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Colocação</span>
+            <select
+              value={String(prizePlace)}
+              onChange={(e) => setPrizePlace(Number(e.target.value))}
+              style={{ width: "100%", padding: 8, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              {[1, 2, 3].map((n) => (
+                <option key={n} value={n}>
+                  {n}º
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "3 1 360px", minWidth: 260 }}>
+            <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Premiação</span>
+            <input
+              value={prizeReward}
+              onChange={(e) => setPrizeReward(e.target.value)}
+              placeholder="Ex.: Medalha + cinturão / R$ 200 / Troféu..."
+              style={{
+                width: "100%",
+                height: 40,
+                padding: "0 10px",
+                borderRadius: tokens.radius.sm,
+                border: `1px solid ${tokens.color.borderSubtle}`,
+                fontSize: 14,
+                boxSizing: "border-box",
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            disabled={addPrizeMut.isPending || prizeReward.trim() === "" || (prizeKind === "category" && prizeAgeDivisionId === "")}
+            onClick={() => addPrizeMut.mutate()}
+            style={{
+              padding: "10px 16px",
+              fontWeight: 700,
+              backgroundColor: tokens.color.primary,
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              height: 40,
+              minWidth: 140,
+              flex: "1 1 140px",
+              alignSelf: "flex-end",
+            }}
+          >
+            {addPrizeMut.isPending ? "Salvando..." : "Adicionar"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          {(prizes ?? []).length === 0 ? (
+            <p style={{ color: tokens.color.textMuted, margin: 0 }}>Nenhuma premiação cadastrada.</p>
+          ) : (
+            <div style={{ border: `1px solid ${tokens.color.borderSubtle}`, borderRadius: 10, overflow: "hidden" }}>
+              {(prizes ?? []).map((p) => {
+                const divLabel = (divisions ?? []).find((d) => d.id === p.age_division_id)?.label ?? null;
+                const faixaLabel =
+                  p.faixa_id != null
+                    ? (() => {
+                        const fx = (faixas ?? []).find((f) => f.id === p.faixa_id);
+                        if (!fx) return "Faixa";
+                        const target = (comp?.event_modality ?? eventModality ?? "").trim().toLowerCase();
+                        // Se não filtramos por modalidade, mostramos a modalidade para desambiguar.
+                        return target ? fx.name : `${fx.name} (${fx.modalidade_name})`;
+                      })()
+                    : null;
+                const tag = `${p.kind === "category" ? "Categoria" : "Absoluto"} · ${p.modality.toUpperCase()} · ${p.gender === "male" ? "M" : "F"}` +
+                  (divLabel ? ` · ${divLabel}` : "") +
+                  (faixaLabel ? ` · ${faixaLabel}` : "");
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      borderTop: "1px solid " + tokens.color.borderSubtle,
+                      background: "white",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: tokens.color.textMuted, fontWeight: 700 }}>{tag}</div>
+                      <div style={{ marginTop: 2, fontWeight: 900 }}>{p.place}º lugar — {p.reward}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => delPrizeMut.mutate(p.id)}
+                      disabled={delPrizeMut.isPending}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, color: tokens.color.error }}
+                      title="Remover premiação"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </Section>
 
@@ -1580,77 +1912,171 @@ export function CompetitionManagePage() {
             Confirme ou recuse o comprovante como no fluxo de mensalidade. Enquanto o pagamento não estiver <strong>Pago ✓</strong>, a pesagem do atleta
             fica bloqueada.
           </p>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Aguardando sua confirmação</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 28 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: tokens.color.textMuted, fontWeight: 800, letterSpacing: 0.2 }}>Filtro</div>
+            <select
+              value={financeFilter}
+              onChange={(e) =>
+                setFinanceFilter(e.target.value as typeof financeFilter)
+              }
+              style={{ padding: "8px 10px", borderRadius: 10, border: `1px solid ${tokens.color.borderSubtle}` }}
+            >
+              <option value="pending_confirmation">Aguardando confirmação</option>
+              <option value="pending_payment">Sem comprovante</option>
+              <option value="confirmed">Pagos ✓</option>
+              <option value="rejected">Recusados</option>
+              <option value="not_applicable">Isentos / ok</option>
+              <option value="all">Todas</option>
+            </select>
+            <div style={{ fontSize: 12, color: tokens.color.textMuted }}>
+              Mostrando{" "}
+              <strong>
+                {
+                  (regs ?? []).filter((r) => {
+                    if (financeFilter === "all") return true;
+                    return (r.payment_status ?? "not_applicable") === financeFilter;
+                  }).length
+                }
+              </strong>{" "}
+              transação(ões)
+            </div>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 12 }}>
             <thead>
               <tr>
                 <th align="left">Aluno</th>
+                <th align="left">Categoria</th>
+                <th align="left">Taxa</th>
+                <th align="left">Status</th>
+                <th align="left">Confirmado em</th>
                 <th align="left">Comprovante</th>
-                <th></th>
+                <th align="left">Ações</th>
               </tr>
             </thead>
             <tbody>
               {(regs ?? [])
-                .filter((r) => r.payment_status === "pending_confirmation")
-                .map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      {r.student_name ?? r.student_id}
-                      <div style={{ fontSize: 12, color: tokens.color.textMuted }}>
-                        {r.registration_fee_amount != null ? `Taxa R$ ${r.registration_fee_amount}` : ""}
-                      </div>
-                    </td>
-                    <td>
-                      {r.payment_receipt_path ? (
-                        <a href={receiptHref(r.payment_receipt_path) ?? "#"} target="_blank" rel="noreferrer" style={{ color: tokens.color.primary }}>
-                          Abrir arquivo
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        disabled={confirmPayMut.isPending}
-                        onClick={() => confirmPayMut.mutate(r.id)}
-                        style={{ marginRight: 8, padding: "6px 12px", fontWeight: 700 }}
-                      >
-                        Confirmar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={rejectPayMut.isPending}
-                        onClick={() => {
-                          const notes = window.prompt("Motivo da recusa (opcional):") ?? "";
-                          rejectPayMut.mutate({ registrationId: r.id, notes });
-                        }}
-                        style={{ padding: "6px 12px" }}
-                      >
-                        Recusar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                .filter((r) => {
+                  if (financeFilter === "all") return true;
+                  return (r.payment_status ?? "not_applicable") === financeFilter;
+                })
+                .sort((a, b) => {
+                  // Prioriza pendências no topo
+                  const prio = (st?: string) => {
+                    if (st === "pending_confirmation") return 0;
+                    if (st === "pending_payment") return 1;
+                    if (st === "rejected") return 2;
+                    if (st === "confirmed") return 3;
+                    if (st === "not_applicable") return 4;
+                    return 9;
+                  };
+                  const pa = prio(a.payment_status);
+                  const pb = prio(b.payment_status);
+                  if (pa !== pb) return pa - pb;
+                  const an = String(a.student_name ?? "");
+                  const bn = String(b.student_name ?? "");
+                  return an.localeCompare(bn, "pt");
+                })
+                .map((r) => {
+                  const href = receiptHref(r.payment_receipt_path);
+                  const kind = receiptKind(r.payment_receipt_path);
+                  const canConfirm = r.payment_status === "pending_confirmation" || r.payment_status === "pending_payment";
+                  const canReject = r.payment_status === "pending_confirmation";
+                  return (
+                    <tr key={r.id} style={{ borderTop: `1px solid ${tokens.color.borderSubtle}` }}>
+                      <td style={{ padding: "10px 0" }}>
+                        <div style={{ fontWeight: 800 }}>{r.student_name ?? r.student_id}</div>
+                        <div style={{ fontSize: 12, color: tokens.color.textMuted }}>
+                          Código {r.registration_public_code}
+                          {r.payment_notes ? ` • Obs: ${r.payment_notes}` : ""}
+                        </div>
+                      </td>
+                      <td style={{ fontSize: 12, color: tokens.color.textMuted }}>
+                        <div>{r.age_division_label ?? `Div ${r.age_division_id}`}</div>
+                        <div>{r.weight_class_label ?? `Peso ${r.weight_class_id}`}</div>
+                      </td>
+                      <td style={{ fontSize: 13 }}>
+                        {r.registration_fee_amount != null ? `R$ ${r.registration_fee_amount}` : "—"}
+                      </td>
+                      <td style={{ fontSize: 12, fontWeight: 800 }}>{paymentLabel(r.payment_status)}</td>
+                      <td style={{ fontSize: 12, color: tokens.color.textMuted }}>{fmtDateTime(r.payment_confirmed_at)}</td>
+                      <td style={{ fontSize: 12 }}>
+                        {href ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <a href={href} target="_blank" rel="noreferrer" style={{ color: tokens.color.primary, fontWeight: 800 }}>
+                              Abrir arquivo
+                            </a>
+                            {kind === "image" ? (
+                              <a href={href} target="_blank" rel="noreferrer" style={{ display: "inline-block" }}>
+                                <img
+                                  src={href}
+                                  alt="Comprovante"
+                                  style={{
+                                    display: "block",
+                                    maxWidth: 220,
+                                    maxHeight: 120,
+                                    borderRadius: 10,
+                                    border: `1px solid ${tokens.color.borderSubtle}`,
+                                    background: "white",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                              </a>
+                            ) : kind === "pdf" ? (
+                              <span style={{ color: tokens.color.textMuted }}>PDF</span>
+                            ) : (
+                              <span style={{ color: tokens.color.textMuted }}>Arquivo</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: tokens.color.textMuted }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        {canConfirm ? (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              disabled={confirmPayMut.isPending}
+                              onClick={() => {
+                                const noReceipt = !r.payment_receipt_path;
+                                if (noReceipt) {
+                                  const ok = window.confirm(
+                                    "Confirmar pagamento SEM comprovante? Isso libera a pesagem do atleta.",
+                                  );
+                                  if (!ok) return;
+                                }
+                                confirmPayMut.mutate({ registrationId: r.id, forceWithoutReceipt: noReceipt });
+                              }}
+                              style={{ padding: "6px 12px", fontWeight: 800 }}
+                            >
+                              Confirmar
+                            </button>
+                            {canReject ? (
+                              <button
+                                type="button"
+                                disabled={rejectPayMut.isPending}
+                                onClick={() => {
+                                  const notes = window.prompt("Motivo da recusa (opcional):") ?? "";
+                                  rejectPayMut.mutate({ registrationId: r.id, notes });
+                                }}
+                                style={{ padding: "6px 12px" }}
+                              >
+                                Recusar
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span style={{ color: tokens.color.textMuted }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
-          {(regs ?? []).filter((r) => r.payment_status === "pending_confirmation").length === 0 && (
-            <p style={{ color: tokens.color.textMuted, marginBottom: 24 }}>Nenhum comprovante pendente neste evento.</p>
-          )}
 
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Ainda sem comprovante enviado</h3>
-          <ul style={{ fontSize: 14, color: tokens.color.textPrimary }}>
-            {(regs ?? [])
-              .filter((r) => r.payment_status === "pending_payment")
-              .map((r) => (
-                <li key={r.id}>
-                  {r.student_name ?? r.student_id} — código {r.registration_public_code}
-                </li>
-              ))}
-          </ul>
-          {(regs ?? []).filter((r) => r.payment_status === "pending_payment").length === 0 && (
-            <p style={{ color: tokens.color.textMuted }}>Ninguém neste estado.</p>
-          )}
+          {(regs ?? []).length === 0 && <p style={{ color: tokens.color.textMuted }}>Nenhuma transação neste evento.</p>}
         </Section>
       )}
 

@@ -144,6 +144,27 @@ function IconCredit(props: { size?: number }) {
   );
 }
 
+function IconSchool(props: { size?: number }) {
+  const s = props.size ?? 16;
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3 2 9l10 6 10-6-10-6Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 11v5l6 3.5L18 16v-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconTrash(props: { size?: number }) {
   const s = props.size ?? 16;
   return (
@@ -372,7 +393,20 @@ type Student = {
   faixa_id?: number | null;
   grau?: number;
   graduacao?: string | null;
+  academic_mastered_techniques?: string[];
+  academic_next_objectives?: string[];
 };
+
+function linesToList(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function listToLines(items: string[] | undefined | null): string {
+  return (items ?? []).join("\n");
+}
 
 type Guardian = {
   id: number;
@@ -498,6 +532,11 @@ export function StudentsPage() {
   const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
   const [planIdToAssign, setPlanIdToAssign] = useState<string>("");
   const [planEndDate, setPlanEndDate] = useState<string>("");
+
+  const [academicModalStudent, setAcademicModalStudent] = useState<Student | null>(null);
+  const [academicMasteredText, setAcademicMasteredText] = useState("");
+  const [academicObjectivesText, setAcademicObjectivesText] = useState("");
+  const [academicModalError, setAcademicModalError] = useState<string | null>(null);
 
   const [filterQuery, setFilterQuery] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
@@ -831,6 +870,45 @@ export function StudentsPage() {
           ? err.message
           : "Erro ao cancelar/remover plano do aluno.",
       );
+    },
+  });
+
+  const openAcademicProgressModal = (student: Student) => {
+    setAcademicModalStudent(student);
+    setAcademicMasteredText(listToLines(student.academic_mastered_techniques));
+    setAcademicObjectivesText(listToLines(student.academic_next_objectives));
+    setAcademicModalError(null);
+  };
+
+  const saveAcademicProgressMutation = useMutation({
+    mutationFn: async () => {
+      if (!academicModalStudent) return;
+      await api.put(`/api/students/${academicModalStudent.id}`, {
+        academic_mastered_techniques: linesToList(academicMasteredText),
+        academic_next_objectives: linesToList(academicObjectivesText),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      setAcademicModalStudent(null);
+      setAcademicModalError(null);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "data" in err.response &&
+        err.response.data &&
+        typeof err.response.data === "object" &&
+        "detail" in err.response.data
+          ? String((err.response.data as { detail: unknown }).detail)
+          : err instanceof Error
+            ? err.message
+            : "Não foi possível salvar o progresso acadêmico.";
+      setAcademicModalError(msg);
     },
   });
 
@@ -1202,6 +1280,16 @@ export function StudentsPage() {
                               <button type="button" onClick={() => openPlanManager(student)} className="am-btn" style={{ ...ui.iconBtn, width: 38 }} title="Plano / créditos" aria-label="Plano / créditos">
                                 <IconCredit />
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => openAcademicProgressModal(student)}
+                                className="am-btn"
+                                style={{ ...ui.iconBtn, width: 38 }}
+                                title="Progresso acadêmico (app)"
+                                aria-label="Progresso acadêmico"
+                              >
+                                <IconSchool />
+                              </button>
                               <button type="button" onClick={() => deleteMutation.mutate(student.id)} className="am-btn" style={{ ...ui.iconBtn, ...ui.buttonDanger, width: 38 }} title="Remover aluno" aria-label="Remover aluno">
                                 <IconTrash />
                               </button>
@@ -1346,6 +1434,16 @@ export function StudentsPage() {
                                       aria-label="Plano / créditos"
                                     >
                                       <IconCredit />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openAcademicProgressModal(student)}
+                                      className="am-btn"
+                                      style={{ ...ui.iconBtn }}
+                                      title="Progresso acadêmico (app)"
+                                      aria-label="Progresso acadêmico"
+                                    >
+                                      <IconSchool />
                                     </button>
                                     <button
                                       type="button"
@@ -1567,6 +1665,124 @@ export function StudentsPage() {
         </div>
       </div>
 
+      {academicModalStudent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="academic-progress-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: tokens.space.lg,
+            zIndex: 80,
+          }}
+          onClick={() => setAcademicModalStudent(null)}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              maxHeight: "90vh",
+              overflow: "auto",
+              backgroundColor: "white",
+              borderRadius: tokens.radius.lg,
+              border: `1px solid ${tokens.color.borderSubtle}`,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: tokens.space.lg,
+                borderBottom: `1px solid ${tokens.color.borderSubtle}`,
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: tokens.space.md,
+              }}
+            >
+              <div>
+                <h2
+                  id="academic-progress-title"
+                  style={{ margin: 0, fontSize: tokens.text.lg, fontWeight: 800 }}
+                >
+                  Progresso acadêmico
+                </h2>
+                <p style={{ margin: "6px 0 0 0", fontSize: tokens.text.sm, color: tokens.color.textMuted }}>
+                  Exibido no app do aluno em &quot;Meu progresso acadêmico&quot;. Uma linha = um item da lista.
+                </p>
+                <p style={{ margin: "8px 0 0 0", fontSize: tokens.text.sm, fontWeight: 700 }}>
+                  {academicModalStudent.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAcademicModalStudent(null)}
+                className="am-btn"
+                style={{ ...ui.button, flexShrink: 0 }}
+              >
+                Fechar
+              </button>
+            </div>
+            <div style={{ padding: tokens.space.lg, display: "flex", flexDirection: "column", gap: tokens.space.md }}>
+              <label style={ui.label}>
+                Técnicas masterizadas
+                <textarea
+                  value={academicMasteredText}
+                  onChange={(e) => setAcademicMasteredText(e.target.value)}
+                  rows={5}
+                  placeholder={"Ex.: Jiu-Jitsu\nRaspagem básica"}
+                  className="am-input"
+                  style={{ ...ui.input, resize: "vertical", minHeight: 100 }}
+                />
+              </label>
+              <label style={ui.label}>
+                Próximos objetivos
+                <textarea
+                  value={academicObjectivesText}
+                  onChange={(e) => setAcademicObjectivesText(e.target.value)}
+                  rows={5}
+                  placeholder={"Ex.: Evolução contínua\nNovas técnicas com o professor"}
+                  className="am-input"
+                  style={{ ...ui.input, resize: "vertical", minHeight: 100 }}
+                />
+              </label>
+              {academicModalError && (
+                <p style={{ margin: 0, color: tokens.color.error, fontWeight: 700, fontSize: tokens.text.sm }}>
+                  {academicModalError}
+                </p>
+              )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  disabled={saveAcademicProgressMutation.isPending}
+                  onClick={() => saveAcademicProgressMutation.mutate()}
+                  className="am-btn"
+                  style={{
+                    ...ui.button,
+                    ...ui.buttonGold,
+                    opacity: saveAcademicProgressMutation.isPending ? 0.85 : 1,
+                    boxShadow: "0 10px 18px rgba(184,158,93,0.22)",
+                  }}
+                >
+                  {saveAcademicProgressMutation.isPending ? "Salvando..." : "Salvar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAcademicModalStudent(null)}
+                  className="am-btn"
+                  style={ui.button}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

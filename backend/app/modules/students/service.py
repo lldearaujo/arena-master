@@ -1,8 +1,16 @@
-from typing import Iterable
+from __future__ import annotations
+
+from datetime import date
+import json
+import logging
+from typing import Any, Iterable
+
+import httpx
 
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.competition import Competition, CompetitionAward, CompetitionPrize
 from app.models.dojo_modalidade import DojoModalidade
 from app.models.faixa import Faixa
 from app.models.finance import Plan
@@ -18,8 +26,44 @@ from app.modules.students.schemas import (
     GuardianRead,
     StudentCreate,
     StudentRead,
+    StudentSelfUpdate,
     StudentUpdate,
 )
+
+logger = logging.getLogger(__name__)
+
+_MAX_ACADEMIC_ITEMS = 50
+_MAX_ACADEMIC_ITEM_LEN = 500
+
+
+def parse_academic_list(raw: str | None) -> list[str]:
+    if not raw or not str(raw).strip():
+        return []
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        out: list[str] = []
+        for x in data:
+            s = str(x).strip()[:_MAX_ACADEMIC_ITEM_LEN]
+            if s:
+                out.append(s)
+            if len(out) >= _MAX_ACADEMIC_ITEMS:
+                break
+        return out
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+def dump_academic_list(items: list[str]) -> str:
+    cleaned: list[str] = []
+    for x in items:
+        s = str(x).strip()[:_MAX_ACADEMIC_ITEM_LEN]
+        if s:
+            cleaned.append(s)
+        if len(cleaned) >= _MAX_ACADEMIC_ITEMS:
+            break
+    return json.dumps(cleaned, ensure_ascii=False)
 
 
 async def assert_faixa_grau_for_modalidade(
@@ -187,15 +231,30 @@ async def update_student(
 
     update_data = data.model_dump(exclude_unset=True)
     is_active = update_data.pop("is_active", None)
+    acad_master = update_data.pop("academic_mastered_techniques", None)
+    acad_obj = update_data.pop("academic_next_objectives", None)
 
-    next_modalidade = (
-        update_data["modalidade"] if "modalidade" in update_data else student.modalidade
-    )
-    next_faixa = update_data["faixa_id"] if "faixa_id" in update_data else student.faixa_id
-    next_grau = update_data["grau"] if "grau" in update_data else student.grau
-    await assert_faixa_grau_for_modalidade(
-        session, dojo_id, next_faixa, next_modalidade, next_grau
-    )
+    # Valida faixa/grau APENAS se o payload está alterando algo desse trio.
+    # Isso evita bloquear updates "parciais" (ex.: progresso acadêmico) quando o aluno
+    # já possui dados históricos inconsistentes (faixa vs modalidade).
+    if any(k in update_data for k in ("modalidade", "faixa_id", "grau")):
+        next_modalidade = (
+            update_data["modalidade"]
+            if "modalidade" in update_data
+            else student.modalidade
+        )
+        next_faixa = (
+            update_data["faixa_id"] if "faixa_id" in update_data else student.faixa_id
+        )
+        next_grau = update_data["grau"] if "grau" in update_data else student.grau
+        await assert_faixa_grau_for_modalidade(
+            session, dojo_id, next_faixa, next_modalidade, next_grau
+        )
+
+    if acad_master is not None:
+        student.academic_mastered_techniques = dump_academic_list(acad_master)
+    if acad_obj is not None:
+        student.academic_next_objectives = dump_academic_list(acad_obj)
 
     for field, value in update_data.items():
         setattr(student, field, value)
@@ -480,6 +539,234 @@ async def get_student_for_user(
         if f"{slug}@{dojo_slug}" == user.email.lower():
             return s
     return None
+
+
+async def list_my_competition_awards(
+    session: AsyncSession,
+    user: User,
+) -> list[dict]:
+    """
+    Retorna as medalhas/pódios do aluno logado.
+    Estrutura em dict para evitar dependência cruzada de schemas entre módulos.
+    """
+    student = await get_student_for_user(session, user)
+    if student is None:
+        return []
+
+    r = await session.execute(
+        select(
+            CompetitionAward,
+            Competition.name,
+            Competition.reference_year,
+            CompetitionPrize.reward,
+        )
+        .join(Competition, Competition.id == CompetitionAward.competition_id)
+        .outerjoin(CompetitionPrize, CompetitionPrize.id == CompetitionAward.prize_id)
+        .where(CompetitionAward.student_id == student.id)
+        .order_by(CompetitionAward.awarded_at.desc(), CompetitionAward.id.desc())
+    )
+
+    out: list[dict] = []
+    for award, comp_name, ref_year, reward in r.all():
+        out.append(
+            {
+                "id": award.id,
+                "competition_id": award.competition_id,
+                "kind": award.kind,
+                "age_division_id": award.age_division_id,
+                "weight_class_id": award.weight_class_id,
+                "gender": award.gender,
+                "modality": award.modality,
+                "place": int(award.place),
+                "awarded_at": award.awarded_at.isoformat() if award.awarded_at else None,
+                "reward": reward,
+                "competition_name": comp_name,
+                "reference_year": int(ref_year) if ref_year is not None else None,
+            }
+        )
+    return out
+
+
+async def update_student_self(
+    session: AsyncSession,
+    student: Student,
+    payload: "schemas.StudentSelfUpdate",
+) -> Student:
+    """
+    Update limitado para o próprio aluno.
+    Somente campos pessoais que não afetam regras de graduação/matrícula.
+    """
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise ValueError("Informe seu nome.")
+        student.name = name
+    if "birth_date" in data:
+        student.birth_date = data["birth_date"]
+    if "weight_kg" in data:
+        w = data["weight_kg"]
+        student.weight_kg = float(w) if w is not None else None
+    await session.commit()
+    await session.refresh(student)
+    return student
+
+
+def _extract_bushido_text(payload: Any) -> str | None:
+    """
+    Aceita respostas variadas do n8n:
+    - JSON com campos comuns (text, ensinamento, message, result, data.text)
+    - string direta (caso webhook retorne texto puro)
+    """
+    if payload is None:
+        return None
+    if isinstance(payload, str):
+        text = payload.strip()
+        return text or None
+    if isinstance(payload, bytes):
+        try:
+            text = payload.decode("utf-8", errors="ignore").strip()
+        except Exception:
+            return None
+        return text or None
+    if isinstance(payload, dict):
+        for key in ("text", "ensinamento", "mensagem", "message", "result", "output"):
+            v = payload.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        data = payload.get("data")
+        if isinstance(data, dict):
+            v = data.get("text") or data.get("ensinamento") or data.get("message")
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    return None
+
+
+def _normalize_master_note(text: str) -> str:
+    """
+    Normaliza texto vindo do n8n para exibição no app (sem markdown "cru").
+
+    Casos reais que tratamos:
+    - Webhook respondendo "Text" com body como:
+      { {{ $json.output }} }
+      -> o app recebe algo começando com "{" e terminando com "}".
+    - O conteúdo pode vir em Markdown simples (ex.: **negrito**).
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+
+    # Se veio com "\n" literal, converte.
+    t = t.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+    # Remove wrapper `{ ... }` quando for apenas "embrulho" (sem parecer JSON de verdade).
+    if t.startswith("{") and t.endswith("}"):
+        inner = t[1:-1].strip()
+        # Se não tem ":" (parece não ser objeto JSON), trata como wrapper.
+        if ":" not in inner:
+            t = inner
+
+    # Remove negrito/ênfases comuns de markdown.
+    t = t.replace("**", "").replace("__", "").replace("`", "")
+
+    # Colapsa espaços excessivos (preserva quebras de linha).
+    lines = [ln.strip() for ln in t.splitlines()]
+    t = "\n".join([ln for ln in lines if ln != ""])
+
+    return t.strip()
+
+
+async def refresh_master_notes_if_needed(
+    *,
+    session: AsyncSession,
+    student: Student,
+    user: User,
+    today: date,
+    webhook_url: str,
+    webhook_method: str = "POST",
+) -> None:
+    """
+    Gera 1 ensinamento por dia e por usuário, persiste em students.master_notes(+date).
+    Best-effort: se falhar, mantém o conteúdo anterior e não levanta exceção.
+    """
+    # Se já foi marcado hoje mas não há texto, tentamos novamente.
+    if student.master_notes_date == today and (student.master_notes or "").strip():
+        return
+    if not webhook_url:
+        return
+    webhook_url = str(webhook_url).strip()
+    # Protege contra URL inválida (ex.: "https://.n8n....")
+    if webhook_url.startswith("https://.") or webhook_url.startswith("http://."):
+        logger.error("BUSHIDO webhook URL inválida: %s", webhook_url)
+        return
+
+    body = {
+        "user_id": user.id,
+        "student_id": student.id,
+        "dojo_id": user.dojo_id,
+        "date": today.isoformat(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            method = (webhook_method or "POST").strip().upper()
+            headers = {"Accept": "application/json, text/plain;q=0.9, */*;q=0.8"}
+
+            async def _do_post():
+                return await client.post(webhook_url, json=body, headers=headers)
+
+            async def _do_get():
+                # GET com query params (compatível com webhook que foi testado no browser)
+                return await client.get(webhook_url, params=body, headers=headers)
+
+            if method == "GET":
+                res = await _do_get()
+                # Se GET falhar por método, tenta POST
+                if res.status_code in (405, 404):
+                    res = await _do_post()
+            else:
+                res = await _do_post()
+                # Se POST não for aceito, tenta GET
+                if res.status_code == 405:
+                    res = await _do_get()
+
+            if res.status_code >= 400:
+                logger.error(
+                    "Webhook Bushido respondeu %s (method=%s url=%s body=%s): %s",
+                    res.status_code,
+                    method,
+                    webhook_url,
+                    body,
+                    (res.text or "")[:400],
+                )
+                res.raise_for_status()
+            content_type = (res.headers.get("content-type") or "").lower()
+            if "application/json" in content_type:
+                data = res.json()
+                text = _extract_bushido_text(data) or _extract_bushido_text(res.text)
+            else:
+                text = _extract_bushido_text(res.text)
+    except Exception as exc:
+        logger.exception(
+            "Falha ao consultar webhook Bushido (url=%s, user_id=%s, student_id=%s): %s",
+            webhook_url,
+            getattr(user, "id", None),
+            getattr(student, "id", None),
+            exc,
+        )
+        return
+
+    if not text:
+        return
+
+    cleaned = _normalize_master_note(text)
+    if not cleaned:
+        return
+
+    student.master_notes = cleaned
+    student.master_notes_date = today
+    await session.commit()
+    await session.refresh(student)
 
 
 def _format_graduacao(faixa: Faixa | None, grau: int) -> str | None:

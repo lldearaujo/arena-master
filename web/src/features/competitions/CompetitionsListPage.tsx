@@ -97,8 +97,10 @@ export function CompetitionsListPage() {
   });
 
   const confirmPayList = useMutation({
-    mutationFn: async ({ cid, rid }: { cid: number; rid: number }) => {
-      await api.post(`/api/competitions/${cid}/registrations/${rid}/confirm-payment`);
+    mutationFn: async ({ cid, rid, forceWithoutReceipt }: { cid: number; rid: number; forceWithoutReceipt?: boolean }) => {
+      await api.post(`/api/competitions/${cid}/registrations/${rid}/confirm-payment`, {
+        force_without_receipt: Boolean(forceWithoutReceipt),
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["competitions", "pending-reg-payments"] });
@@ -133,6 +135,7 @@ export function CompetitionsListPage() {
         name: name.trim(),
         reference_year: year,
         is_published: false,
+        event_modality: null,
       });
       return res.data;
     },
@@ -158,6 +161,14 @@ export function CompetitionsListPage() {
   function receiptUrl(path: string | null | undefined) {
     if (!path) return "#";
     return path.startsWith("http") ? path : `${receiptBase}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+
+  function receiptKind(path: string | null | undefined): "image" | "pdf" | "other" | "none" {
+    if (!path) return "none";
+    const p = String(path).toLowerCase();
+    if (p.includes(".pdf")) return "pdf";
+    if (p.match(/\.(png|jpg|jpeg|webp|gif)(\?|#|$)/)) return "image";
+    return "other";
   }
 
   function regPaymentLabel(st: string | undefined) {
@@ -635,49 +646,103 @@ export function CompetitionsListPage() {
           {!pendPayLoading && (pendingRegPayments?.length ?? 0) === 0 && (
             <p style={{ color: tokens.color.textMuted }}>Nenhum comprovante aguardando confirmação.</p>
           )}
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-            {(pendingRegPayments ?? []).map((r) => (
-              <li key={`${r.competition_id}-${r.id}`} style={card}>
-                <div style={{ fontWeight: 800 }}>{r.competition_name ?? `Evento #${r.competition_id}`}</div>
-                <div style={{ fontSize: tokens.text.sm, marginTop: 4 }}>
-                  {r.student_name ?? `Aluno #${r.student_id}`} — código {r.registration_public_code}
-                  {r.registration_fee_amount != null ? ` • R$ ${r.registration_fee_amount}` : ""}
-                </div>
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                  {r.payment_receipt_path ? (
-                    <a href={receiptUrl(r.payment_receipt_path)} target="_blank" rel="noreferrer" style={{ color: tokens.color.primary, fontWeight: 700 }}>
-                      Abrir comprovante
-                    </a>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={confirmPayList.isPending}
-                    onClick={() => confirmPayList.mutate({ cid: r.competition_id, rid: r.id })}
-                    style={{ padding: "8px 14px", fontWeight: 700 }}
-                  >
-                    Confirmar pagamento
-                  </button>
-                  <button
-                    type="button"
-                    disabled={rejectPayList.isPending}
-                    onClick={() => {
-                      const notes = window.prompt("Motivo (opcional):") ?? "";
-                      rejectPayList.mutate({ cid: r.competition_id, rid: r.id, notes });
-                    }}
-                    style={{ padding: "8px 14px" }}
-                  >
-                    Recusar
-                  </button>
-                  <Link
-                    to={`/competicoes/gerir/${r.competition_id}`}
-                    style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted, fontWeight: 600 }}
-                  >
-                    Abrir gestão do evento
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr>
+                <th align="left">Evento</th>
+                <th align="left">Atleta</th>
+                <th align="left">Taxa</th>
+                <th align="left">Comprovante</th>
+                <th align="left">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(pendingRegPayments ?? []).map((r) => {
+                const href = r.payment_receipt_path ? receiptUrl(r.payment_receipt_path) : "#";
+                const kind = receiptKind(r.payment_receipt_path);
+                return (
+                  <tr key={`${r.competition_id}-${r.id}`} style={{ borderTop: `1px solid ${tokens.color.borderSubtle}` }}>
+                    <td style={{ padding: "10px 0" }}>
+                      <div style={{ fontWeight: 800 }}>{r.competition_name ?? `Evento #${r.competition_id}`}</div>
+                      <Link
+                        to={`/competicoes/gerir/${r.competition_id}`}
+                        style={{ fontSize: 12, color: tokens.color.textMuted, fontWeight: 700 }}
+                      >
+                        Abrir gestão do evento
+                      </Link>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 800 }}>{r.student_name ?? `Aluno #${r.student_id}`}</div>
+                      <div style={{ fontSize: 12, color: tokens.color.textMuted }}>Código {r.registration_public_code}</div>
+                    </td>
+                    <td style={{ fontSize: 13 }}>{r.registration_fee_amount != null ? `R$ ${r.registration_fee_amount}` : "—"}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {r.payment_receipt_path ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <a href={href} target="_blank" rel="noreferrer" style={{ color: tokens.color.primary, fontWeight: 800 }}>
+                            Abrir arquivo
+                          </a>
+                          {kind === "image" ? (
+                            <a href={href} target="_blank" rel="noreferrer" style={{ display: "inline-block" }}>
+                              <img
+                                src={href}
+                                alt="Comprovante"
+                                style={{
+                                  display: "block",
+                                  maxWidth: 220,
+                                  maxHeight: 120,
+                                  borderRadius: 10,
+                                  border: `1px solid ${tokens.color.borderSubtle}`,
+                                  background: "white",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            </a>
+                          ) : kind === "pdf" ? (
+                            <span style={{ color: tokens.color.textMuted }}>PDF</span>
+                          ) : (
+                            <span style={{ color: tokens.color.textMuted }}>Arquivo</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: tokens.color.textMuted }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          disabled={confirmPayList.isPending}
+                          onClick={() => {
+                            const noReceipt = !r.payment_receipt_path;
+                            if (noReceipt) {
+                              const ok = window.confirm("Confirmar pagamento SEM comprovante?");
+                              if (!ok) return;
+                            }
+                            confirmPayList.mutate({ cid: r.competition_id, rid: r.id, forceWithoutReceipt: noReceipt });
+                          }}
+                          style={{ padding: "8px 14px", fontWeight: 800 }}
+                        >
+                          Confirmar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rejectPayList.isPending}
+                          onClick={() => {
+                            const notes = window.prompt("Motivo (opcional):") ?? "";
+                            rejectPayList.mutate({ cid: r.competition_id, rid: r.id, notes });
+                          }}
+                          style={{ padding: "8px 14px" }}
+                        >
+                          Recusar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </>
       )}
     </div>

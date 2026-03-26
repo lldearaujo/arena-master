@@ -30,7 +30,7 @@ Aplicação completa para gestão de um dojo / academia:
 
 ## Configuração de ambiente
 
-1. **Copie o `.env.example` para `.env` na raiz do projeto**:
+1. **Copie o `.env.example` para `.env` na raiz do projeto (apenas desenvolvimento/local)**:
 
    ```bash
    cp .env.example .env
@@ -41,6 +41,16 @@ Aplicação completa para gestão de um dojo / academia:
    - `DATABASE_URL` / `POSTGRES_*`
    - `JWT_SECRET` (trocar para um valor forte em produção)
    - `CORS_ORIGINS` (URLs do painel e do app web, se houver)
+- `FCM_PROJECT_ID` + `FCM_SERVICE_ACCOUNT_FILE` (recomendado) para push via FCM HTTP v1
+
+### Produção (GitHub → EasyPanel)
+
+Em produção, **não versione** `.env` / `.env.production`. No EasyPanel, configure as variáveis diretamente no painel (Environment).
+
+- **FCM (recomendado)**: faça upload do JSON de service account como Secret/Volume e configure `FCM_SERVICE_ACCOUNT_FILE` apontando para o caminho montado.
+- **Alternativa**: use `FCM_SERVICE_ACCOUNT_JSON` (string). Evite se possível.
+
+Há um exemplo sem segredos em `.env.production.example`.
 
 > O backend lê esse `.env` a partir da raiz do projeto.
 

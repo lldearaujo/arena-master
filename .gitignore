@@ -1,7 +1,7 @@
 .env
 .env.*
 !.env.example
-!.env.production
+!.env.production.example
 
 # Python
 __pycache__/
@@ -37,5 +37,10 @@ com.facebook.react.fabric.mounting.mountitems.PreAllocateViewMountItem
 # OS / editor
 .DS_Store
 Thumbs.db
+Desktop.ini
 .vscode/
+
+# Uploads locais (não versionar)
+static/receipts/
+backend/static/receipts/
 

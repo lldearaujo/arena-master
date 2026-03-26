@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -16,6 +16,7 @@ class Student(Base):
     email: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -25,8 +26,13 @@ class Student(Base):
     grau: Mapped[int] = mapped_column(Integer, default=0)
     modalidade: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    master_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    master_notes_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     external_dojo_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_faixa_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # JSON array of strings (UTF-8), configurável pelo professor no painel web.
+    academic_mastered_techniques: Mapped[str | None] = mapped_column(Text, nullable=True)
+    academic_next_objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )

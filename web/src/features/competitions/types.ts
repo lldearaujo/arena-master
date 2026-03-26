@@ -47,6 +47,8 @@ export type Competition = {
   organizer_logo_url?: string | null;
   registration_fee_amount?: number | null;
   registration_payment_instructions?: string | null;
+  /** Modalidade "macro" do evento (ex.: "Jiu-Jitsu") */
+  event_modality?: string | null;
 };
 
 export type AgeDivision = {
@@ -131,6 +133,18 @@ export type CompetitionMatch = {
   finish_method: string | null;
   feeder_red_match_id: number | null;
   feeder_blue_match_id: number | null;
+};
+
+export type CompetitionPrize = {
+  id: number;
+  competition_id: number;
+  kind: "category" | "absolute";
+  age_division_id: number | null;
+  faixa_id?: number | null;
+  gender: "male" | "female";
+  modality: "gi" | "nogi";
+  place: number;
+  reward: string;
 };
 
 export type CompetitionBracket = {
