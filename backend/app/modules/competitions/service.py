@@ -6,7 +6,7 @@ import math
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.competition import (
     Competition,
@@ -28,6 +28,151 @@ from app.models.user import User
 from app.core.security import create_access_token, create_refresh_token, get_password_hash
 from app.modules.competitions import schemas
 from app.modules.competitions.federation_presets import get_preset
+
+
+async def _sync_category_awards_from_matches(
+    session: AsyncSession,
+    competition_id: int,
+    bracket: CompetitionBracket,
+) -> None:
+    """
+    Sincroniza `competition_awards` (pódio) a partir das lutas da chave.
+
+    - Só roda quando a Final está concluída.
+    - Recria os registros do alvo (category + divisão/peso/gênero/modality) para evitar duplicidade/inconsistência.
+    - Bronze pode ser duplo (2 semifinais) ou único (chave com bye).
+    """
+    # Descobre modality pela weight class (gi/nogi)
+    wc = await session.get(CompetitionWeightClass, bracket.weight_class_id)
+    modality = wc.modality if wc is not None else "gi"
+
+    r_m = await session.execute(
+        select(CompetitionMatch)
+        .where(CompetitionMatch.bracket_id == bracket.id)
+        .order_by(CompetitionMatch.round_index.asc(), CompetitionMatch.position_in_round.asc(), CompetitionMatch.id.asc())
+    )
+    br_matches = list(r_m.scalars().all())
+    if not br_matches:
+        return
+
+    max_round = max(m.round_index for m in br_matches)
+    final_match = next((m for m in br_matches if m.round_index == max_round), None)
+    if final_match is None or final_match.match_status != "completed":
+        return
+
+    # Gold/Silver dependem do vencedor e do oponente na final.
+    gold_reg_id = final_match.winner_registration_id
+    if gold_reg_id is None:
+        return  # empate sem vencedor não é permitido em eliminatória quando há próxima, mas garantimos aqui
+
+    if gold_reg_id == final_match.red_registration_id:
+        silver_reg_id = final_match.blue_registration_id
+    else:
+        silver_reg_id = final_match.red_registration_id
+
+    # Bronze(s): perdedores das semifinais (rodada anterior à final), quando existir.
+    bronze_reg_ids: list[int] = []
+    if max_round >= 1:
+        for sf in br_matches:
+            if sf.round_index != max_round - 1:
+                continue
+            if sf.match_status != "completed":
+                continue
+            if sf.winner_registration_id is None:
+                continue
+            loser_id = sf.blue_registration_id if sf.winner_registration_id == sf.red_registration_id else sf.red_registration_id
+            if loser_id is not None:
+                bronze_reg_ids.append(int(loser_id))
+
+    # Resolve student_id para cada regId
+    async def student_id_for_reg(reg_id: int | None) -> int | None:
+        if reg_id is None:
+            return None
+        reg = await session.get(CompetitionRegistration, int(reg_id))
+        return int(reg.student_id) if reg is not None else None
+
+    gold_student_id = await student_id_for_reg(gold_reg_id)
+    silver_student_id = await student_id_for_reg(silver_reg_id)
+    bronze_student_ids = [sid for sid in [(await student_id_for_reg(rid)) for rid in bronze_reg_ids] if sid is not None]
+
+    if gold_student_id is None:
+        return
+
+    # Limpa registros antigos do MESMO alvo (category+div/peso/gênero/modality)
+    await session.execute(
+        delete(CompetitionAward).where(
+            CompetitionAward.competition_id == competition_id,
+            CompetitionAward.kind == "category",
+            CompetitionAward.age_division_id == bracket.age_division_id,
+            CompetitionAward.weight_class_id == bracket.weight_class_id,
+            CompetitionAward.gender == bracket.gender,
+            CompetitionAward.modality == modality,
+        )
+    )
+
+    async def pick_prize_id(student_id: int, place: int) -> int | None:
+        st = await session.get(Student, student_id)
+        faixa_id = getattr(st, "faixa_id", None) if st is not None else None
+        # Preferir prize específico da faixa do atleta; fallback para prize "geral" (faixa_id NULL).
+        preferred = case((CompetitionPrize.faixa_id == faixa_id, 0), else_=1)
+        r = await session.execute(
+            select(CompetitionPrize.id)
+            .where(
+                CompetitionPrize.competition_id == competition_id,
+                CompetitionPrize.kind == "category",
+                CompetitionPrize.age_division_id == bracket.age_division_id,
+                CompetitionPrize.gender == bracket.gender,
+                CompetitionPrize.modality == modality,
+                CompetitionPrize.place == place,
+                or_(CompetitionPrize.faixa_id == faixa_id, CompetitionPrize.faixa_id.is_(None)),
+            )
+            .order_by(preferred.asc(), CompetitionPrize.id.asc())
+            .limit(1)
+        )
+        return r.scalar_one_or_none()
+
+    # Insere awards (ouro/prata/bronze)
+    to_create: list[tuple[int, int]] = [(gold_student_id, 1)]
+    if silver_student_id is not None:
+        to_create.append((silver_student_id, 2))
+    for sid in bronze_student_ids:
+        to_create.append((sid, 3))
+
+    for student_id, place in to_create:
+        prize_id = await pick_prize_id(student_id, place)
+        session.add(
+            CompetitionAward(
+                competition_id=competition_id,
+                student_id=student_id,
+                prize_id=prize_id,
+                kind="category",
+                age_division_id=bracket.age_division_id,
+                weight_class_id=bracket.weight_class_id,
+                gender=bracket.gender,
+                modality=modality,
+                place=place,
+            )
+        )
+
+
+async def recompute_category_awards_from_matches(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> int:
+    """Recalcula pódio (competition_awards) para todas as chaves com Final concluída."""
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+
+    r = await session.execute(select(CompetitionBracket).where(CompetitionBracket.competition_id == competition_id))
+    brackets = list(r.scalars().all())
+    changed = 0
+    for br in brackets:
+        await _sync_category_awards_from_matches(session, competition_id, br)
+        changed += 1
+    await session.commit()
+    return changed
+
 from app.modules.competitions.federation_presets.belt_resolve import (
     collect_unique_canonicals,
     resolve_faixa_id_for_canonical,
@@ -51,11 +196,83 @@ REG_PAY_REJECTED = "rejected"
 
 
 def _fee_requires_payment(comp: Competition) -> bool:
+    # Se taxas 1..4 estiverem configuradas, considera pagamento devido quando
+    # pelo menos a taxa "1 inscrição" estiver > 0.
+    if getattr(comp, "registration_fee_amount_1", None) is not None:
+        return float(getattr(comp, "registration_fee_amount_1") or 0) > 0
     return comp.registration_fee_amount is not None and comp.registration_fee_amount > 0
 
 
 def _initial_registration_payment_status(comp: Competition) -> str:
     return REG_PAY_PENDING_PAYMENT if _fee_requires_payment(comp) else REG_PAY_NOT_APPLICABLE
+
+
+def _fee_total_for_count(comp: Competition, count: int) -> float:
+    c = max(1, min(4, int(count)))
+    tier = getattr(comp, f"registration_fee_amount_{c}", None)
+    if tier is not None:
+        try:
+            return float(tier or 0)
+        except Exception:
+            return 0.0
+    base = float(comp.registration_fee_amount or 0)
+    return base * c
+
+
+async def _get_student_competition_regs(
+    session: AsyncSession, competition_id: int, student_id: int
+) -> list[CompetitionRegistration]:
+    r = await session.execute(
+        select(CompetitionRegistration)
+        .where(
+            CompetitionRegistration.competition_id == competition_id,
+            CompetitionRegistration.student_id == student_id,
+        )
+        .order_by(CompetitionRegistration.id.asc())
+    )
+    return list(r.scalars().all())
+
+
+async def _sync_single_charge_for_student(
+    session: AsyncSession, comp: Competition, competition_id: int, student_id: int
+) -> None:
+    regs = await _get_student_competition_regs(session, competition_id, student_id)
+    if not regs:
+        return
+
+    total_fee = _fee_total_for_count(comp, len(regs))
+    anchor = regs[0]
+
+    for reg in regs:
+        reg.registration_fee_amount = total_fee if (reg.id == anchor.id and total_fee > 0) else None
+
+        if reg.id != anchor.id:
+            # Inscrições adicionais não geram nova cobrança.
+            reg.payment_status = REG_PAY_NOT_APPLICABLE
+            reg.payment_receipt_path = None
+            reg.payment_notes = None
+            reg.payment_confirmed_at = None
+
+    if total_fee <= 0:
+        for reg in regs:
+            reg.payment_status = REG_PAY_NOT_APPLICABLE
+            reg.payment_receipt_path = None
+            reg.payment_notes = None
+            reg.payment_confirmed_at = None
+        return
+
+    if anchor.payment_status == REG_PAY_NOT_APPLICABLE:
+        anchor.payment_status = REG_PAY_PENDING_PAYMENT
+    anchor.updated_at = _now()
+
+
+async def _resolve_billing_anchor_registration(
+    session: AsyncSession, reg: CompetitionRegistration
+) -> CompetitionRegistration:
+    regs = await _get_student_competition_regs(session, reg.competition_id, reg.student_id)
+    if not regs:
+        return reg
+    return regs[0]
 
 
 def _registration_payment_cleared(reg: CompetitionRegistration) -> bool:
@@ -144,6 +361,265 @@ async def list_prizes(
         )
     )
     return list(r.scalars().all())
+
+
+async def list_public_prizes(session: AsyncSession, competition_id: int) -> list[schemas.PublicCompetitionPrizeRead]:
+    comp = await _get_competition(session, competition_id)
+    if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+    r = await session.execute(
+        select(CompetitionPrize, Faixa.name)
+        .outerjoin(Faixa, Faixa.id == CompetitionPrize.faixa_id)
+        .where(CompetitionPrize.competition_id == competition_id)
+        .order_by(
+            CompetitionPrize.kind,
+            CompetitionPrize.modality,
+            CompetitionPrize.gender,
+            CompetitionPrize.age_division_id,
+            CompetitionPrize.faixa_id,
+            CompetitionPrize.place,
+            CompetitionPrize.id,
+        )
+    )
+    items: list[schemas.PublicCompetitionPrizeRead] = []
+    for prize, faixa_label in r.all():
+        items.append(
+            schemas.PublicCompetitionPrizeRead(
+                id=prize.id,
+                competition_id=prize.competition_id,
+                kind=prize.kind,
+                age_division_id=prize.age_division_id,
+                faixa_id=prize.faixa_id,
+                faixa_label=faixa_label,
+                gender=prize.gender,
+                modality=prize.modality,
+                place=prize.place,
+                reward=prize.reward,
+            )
+        )
+    return items
+
+
+async def get_my_initial_match(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> schemas.StudentInitialMatchRead | None:
+    if user.role != "aluno":
+        raise HTTPException(status_code=403, detail="Somente alunos")
+
+    comp = await _get_competition(session, competition_id)
+    if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+
+    # acha Student do usuário
+    r_st = await session.execute(select(Student).where(Student.user_id == user.id))
+    st = r_st.scalar_one_or_none()
+    if st is None:
+        return None
+
+    # Inscrições do aluno neste evento — só enxerga chave após pagamento liberado (confirmado ou isento).
+    r_reg = await session.execute(
+        select(CompetitionRegistration).where(
+            CompetitionRegistration.competition_id == competition_id,
+            CompetitionRegistration.student_id == st.id,
+        )
+    )
+    all_regs = list(r_reg.scalars().all())
+    cleared_regs = [x for x in all_regs if _registration_payment_cleared(x)]
+    if not cleared_regs:
+        return None
+    reg_ids = [r.id for r in cleared_regs]
+    reg_by_id = {r.id: r for r in cleared_regs}
+
+    from sqlalchemy import case, or_
+
+    # Preferência: próxima luta pendente (a mais "próxima" na chave).
+    # Fallback: última luta finalizada do atleta.
+    #
+    # Observação: as lutas da chave são pré-criadas pelo gerador (árvore completa),
+    # e o `finish_match` já propaga o vencedor para a próxima luta (slots red/blue).
+    pending_first = case((CompetitionMatch.match_status == "completed", 1), else_=0)
+
+    r_m = await session.execute(
+        select(CompetitionMatch)
+        .join(CompetitionBracket, CompetitionBracket.id == CompetitionMatch.bracket_id)
+        .where(
+            CompetitionBracket.competition_id == competition_id,
+            or_(
+                CompetitionMatch.red_registration_id.in_(reg_ids),
+                CompetitionMatch.blue_registration_id.in_(reg_ids),
+            ),
+            CompetitionMatch.match_status != "cancelled",
+        )
+        .order_by(
+            pending_first.asc(),
+            CompetitionMatch.round_index.asc(),
+            CompetitionMatch.position_in_round.asc(),
+            CompetitionMatch.id.asc(),
+        )
+        .limit(1)
+    )
+    m = r_m.scalar_one_or_none()
+    if m is None:
+        return None
+
+    reg_id = (
+        m.red_registration_id
+        if m.red_registration_id in reg_by_id
+        else m.blue_registration_id
+    )
+    reg = reg_by_id.get(reg_id) if reg_id is not None else None
+    if reg is None:
+        return None
+
+    my_side = "red" if m.red_registration_id == reg.id else "blue"
+    opp_reg_id = m.blue_registration_id if my_side == "red" else m.red_registration_id
+    opponent_name: str | None = None
+    if opp_reg_id is not None:
+        opp_reg = await session.get(CompetitionRegistration, opp_reg_id)
+        if opp_reg is not None:
+            opp_st = await session.get(Student, opp_reg.student_id)
+            opponent_name = opp_st.name if opp_st else None
+
+    mat_name: str | None = None
+    if m.mat_id is not None:
+        mat = await session.get(CompetitionMat, m.mat_id)
+        mat_name = mat.name if mat else None
+
+    my_result = "pending"
+    if m.match_status == "completed":
+        if m.winner_registration_id is None:
+            my_result = "draw"
+        elif m.winner_registration_id == reg.id:
+            my_result = "win"
+        else:
+            my_result = "loss"
+
+    return schemas.StudentInitialMatchRead(
+        match_id=m.id,
+        competition_id=competition_id,
+        registration_id=reg.id,
+        my_side=my_side,
+        opponent_name=opponent_name,
+        mat_id=m.mat_id,
+        mat_name=mat_name,
+        queue_order=m.queue_order,
+        estimated_start_at=m.estimated_start_at,
+        match_status=m.match_status,
+        round_index=m.round_index,
+        red_score=m.red_score,
+        blue_score=m.blue_score,
+        finish_method=m.finish_method,
+        my_result=my_result,
+    )
+
+
+async def get_my_bracket_matches(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> list[schemas.StudentBracketMatchRead]:
+    if user.role != "aluno":
+        raise HTTPException(status_code=403, detail="Somente alunos")
+
+    comp = await _get_competition(session, competition_id)
+    if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+
+    r_st = await session.execute(select(Student).where(Student.user_id == user.id))
+    st = r_st.scalar_one_or_none()
+    if st is None:
+        return []
+
+    r_reg = await session.execute(
+        select(CompetitionRegistration).where(
+            CompetitionRegistration.competition_id == competition_id,
+            CompetitionRegistration.student_id == st.id,
+        )
+    )
+    all_regs = list(r_reg.scalars().all())
+    cleared_regs = [x for x in all_regs if _registration_payment_cleared(x)]
+    if not cleared_regs:
+        return []
+    reg_ids = [r.id for r in cleared_regs]
+    reg_by_id = {r.id: r for r in cleared_regs}
+
+    from sqlalchemy import or_
+
+    r = await session.execute(
+        select(CompetitionMatch)
+        .join(CompetitionBracket, CompetitionBracket.id == CompetitionMatch.bracket_id)
+        .where(
+            CompetitionBracket.competition_id == competition_id,
+            CompetitionMatch.match_status != "cancelled",
+            or_(
+                CompetitionMatch.red_registration_id.in_(reg_ids),
+                CompetitionMatch.blue_registration_id.in_(reg_ids),
+            ),
+        )
+        .order_by(
+            CompetitionMatch.round_index.asc(),
+            CompetitionMatch.position_in_round.asc(),
+            CompetitionMatch.id.asc(),
+        )
+    )
+    matches = list(r.scalars().all())
+
+    out: list[schemas.StudentBracketMatchRead] = []
+    for m in matches:
+        if m.red_registration_id in reg_by_id:
+            reg = reg_by_id[m.red_registration_id]
+            my_side = "red"
+        elif m.blue_registration_id in reg_by_id:
+            reg = reg_by_id[m.blue_registration_id]
+            my_side = "blue"
+        else:
+            continue
+        opp_reg_id = m.blue_registration_id if my_side == "red" else m.red_registration_id
+        opponent_name: str | None = None
+        if opp_reg_id is not None:
+            opp_reg = await session.get(CompetitionRegistration, opp_reg_id)
+            if opp_reg is not None:
+                opp_st = await session.get(Student, opp_reg.student_id)
+                opponent_name = opp_st.name if opp_st else None
+
+        mat_name: str | None = None
+        if m.mat_id is not None:
+            mat = await session.get(CompetitionMat, m.mat_id)
+            mat_name = mat.name if mat else None
+
+        my_result = "pending"
+        if m.match_status == "completed":
+            if m.winner_registration_id is None:
+                my_result = "draw"
+            elif m.winner_registration_id == reg.id:
+                my_result = "win"
+            else:
+                my_result = "loss"
+
+        out.append(
+            schemas.StudentBracketMatchRead(
+                match_id=m.id,
+                bracket_id=m.bracket_id,
+                competition_id=competition_id,
+                registration_id=reg.id,
+                round_index=m.round_index,
+                position_in_round=m.position_in_round,
+                my_side=my_side,
+                opponent_name=opponent_name,
+                mat_id=m.mat_id,
+                mat_name=mat_name,
+                queue_order=m.queue_order,
+                estimated_start_at=m.estimated_start_at,
+                match_status=m.match_status,
+                red_score=m.red_score,
+                blue_score=m.blue_score,
+                finish_method=m.finish_method,
+                my_result=my_result,
+            )
+        )
+    return out
 
 
 async def create_prize(
@@ -402,6 +878,7 @@ async def create_competition(session: AsyncSession, user: User, payload: schemas
         registration_fee_amount=payload.registration_fee_amount,
         registration_payment_instructions=payload.registration_payment_instructions,
         event_modality=em,
+        description=(payload.description or "").strip() or None,
     )
     session.add(comp)
     await session.commit()
@@ -1009,30 +1486,81 @@ async def create_registration(
         session, comp, student, payload.gender, payload.age_division_id, payload.weight_class_id
     )
 
-    existing = await session.execute(
+    wc = await session.get(CompetitionWeightClass, payload.weight_class_id)
+    wc_mod = (wc.modality if wc else None) or payload.modality
+    if wc_mod not in ("gi", "nogi"):
+        wc_mod = payload.modality
+
+    # 1) categoria (idade+peso) na modalidade do weight_class
+    existing_cat = await session.execute(
         select(CompetitionRegistration).where(
             CompetitionRegistration.competition_id == competition_id,
             CompetitionRegistration.student_id == payload.student_id,
+            CompetitionRegistration.kind == "category",
+            CompetitionRegistration.modality == wc_mod,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Aluno já inscrito")
+    if existing_cat.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Aluno já inscrito na categoria desta modalidade")
 
     pay_st = _initial_registration_payment_status(comp)
-    reg = CompetitionRegistration(
-        competition_id=competition_id,
-        student_id=payload.student_id,
-        gender=payload.gender,
-        age_division_id=payload.age_division_id,
-        weight_class_id=payload.weight_class_id,
-        status="registered",
-        registration_public_code=_reg_code(),
-        payment_status=pay_st,
+
+    regs_to_create: list[CompetitionRegistration] = []
+    regs_to_create.append(
+        CompetitionRegistration(
+            competition_id=competition_id,
+            student_id=payload.student_id,
+            kind="category",
+            modality=wc_mod,
+            gender=payload.gender,
+            age_division_id=payload.age_division_id,
+            weight_class_id=payload.weight_class_id,
+            status="registered",
+            registration_public_code=_reg_code(),
+            payment_status=pay_st,
+            registration_fee_amount=None,
+        )
     )
-    session.add(reg)
+
+    if payload.also_absolute:
+        # Absoluto da faixa: precisa de faixa cadastrada.
+        if student.faixa_id is None:
+            raise HTTPException(status_code=400, detail="Aluno sem faixa cadastrada (necessária para absoluto)")
+        existing_abs = await session.execute(
+            select(CompetitionRegistration).where(
+                CompetitionRegistration.competition_id == competition_id,
+                CompetitionRegistration.student_id == payload.student_id,
+                CompetitionRegistration.kind == "absolute",
+                CompetitionRegistration.modality == payload.modality,
+            )
+        )
+        if existing_abs.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Aluno já inscrito no absoluto desta modalidade")
+
+        regs_to_create.append(
+            CompetitionRegistration(
+                competition_id=competition_id,
+                student_id=payload.student_id,
+                kind="absolute",
+                modality=payload.modality,
+                gender=payload.gender,
+                faixa_id=student.faixa_id,
+                age_division_id=None,
+                weight_class_id=None,
+                status="registered",
+                registration_public_code=_reg_code(),
+                payment_status=pay_st,
+                registration_fee_amount=None,
+            )
+        )
+
+    for r in regs_to_create:
+        session.add(r)
+    await session.flush()
+    await _sync_single_charge_for_student(session, comp, competition_id, payload.student_id)
     await session.commit()
-    await session.refresh(reg)
-    return reg
+    await session.refresh(regs_to_create[0])
+    return regs_to_create[0]
 
 
 async def list_registrations(
@@ -1063,14 +1591,17 @@ async def registration_to_read(session: AsyncSession, reg: CompetitionRegistrati
     if st and st.dojo_id is not None:
         dojo = await session.get(Dojo, st.dojo_id)
     comp = await session.get(Competition, reg.competition_id)
-    ad = await session.get(CompetitionAgeDivision, reg.age_division_id)
-    wc = await session.get(CompetitionWeightClass, reg.weight_class_id)
-    wc_lbl = f"[{wc.modality}] {wc.label}" if wc else None
+    ad = await session.get(CompetitionAgeDivision, reg.age_division_id) if reg.age_division_id else None
+    wc = await session.get(CompetitionWeightClass, reg.weight_class_id) if reg.weight_class_id else None
+    wc_lbl = f"[{reg.modality}] Absoluto" if reg.kind == "absolute" else (f"[{wc.modality}] {wc.label}" if wc else None)
     return schemas.RegistrationRead(
         id=reg.id,
         competition_id=reg.competition_id,
         student_id=reg.student_id,
+        kind=getattr(reg, "kind", "category"),
+        modality=getattr(reg, "modality", "gi"),
         gender=reg.gender,
+        faixa_id=getattr(reg, "faixa_id", None),
         age_division_id=reg.age_division_id,
         weight_class_id=reg.weight_class_id,
         status=reg.status,
@@ -1091,7 +1622,7 @@ async def registration_to_read(session: AsyncSession, reg: CompetitionRegistrati
         payment_notes=reg.payment_notes,
         payment_confirmed_at=reg.payment_confirmed_at,
         competition_name=comp.name if comp else None,
-        registration_fee_amount=comp.registration_fee_amount if comp else None,
+        registration_fee_amount=getattr(reg, "registration_fee_amount", None),
         registration_payment_instructions=comp.registration_payment_instructions if comp else None,
         age_division_label=ad.label if ad else None,
         weight_class_label=wc_lbl,
@@ -1132,15 +1663,19 @@ async def registrations_to_read_many(
     )
     dojos = {d.id: d for d in (r_dojos.scalars().all() if r_dojos else [])}
 
-    r_age = await session.execute(
-        select(CompetitionAgeDivision).where(CompetitionAgeDivision.id.in_(age_ids))
-    )
-    age_map = {a.id: a for a in r_age.scalars().all()}
+    age_map: dict[int, CompetitionAgeDivision] = {}
+    if any(x is not None for x in age_ids):
+        r_age = await session.execute(
+            select(CompetitionAgeDivision).where(CompetitionAgeDivision.id.in_({x for x in age_ids if x is not None}))
+        )
+        age_map = {a.id: a for a in r_age.scalars().all()}
 
-    r_wc = await session.execute(
-        select(CompetitionWeightClass).where(CompetitionWeightClass.id.in_(weight_ids))
-    )
-    wc_map = {w.id: w for w in r_wc.scalars().all()}
+    wc_map: dict[int, CompetitionWeightClass] = {}
+    if any(x is not None for x in weight_ids):
+        r_wc = await session.execute(
+            select(CompetitionWeightClass).where(CompetitionWeightClass.id.in_({x for x in weight_ids if x is not None}))
+        )
+        wc_map = {w.id: w for w in r_wc.scalars().all()}
 
     out: list[schemas.RegistrationRead] = []
     for reg in regs:
@@ -1155,16 +1690,18 @@ async def registrations_to_read_many(
             d = dojos.get(st.dojo_id)
             dojo_name = d.name if d else None
 
-        wc = wc_map.get(reg.weight_class_id)
-        wc_lbl = f"[{wc.modality}] {wc.label}" if wc else None
+        wc = wc_map.get(reg.weight_class_id) if reg.weight_class_id else None
+        wc_lbl = f"[{getattr(reg, 'modality', 'gi')}] Absoluto" if getattr(reg, "kind", "category") == "absolute" else (f"[{wc.modality}] {wc.label}" if wc else None)
 
-        ad = age_map.get(reg.age_division_id)
+        ad = age_map.get(reg.age_division_id) if reg.age_division_id else None
 
         out.append(
             schemas.RegistrationRead(
                 id=reg.id,
                 competition_id=reg.competition_id,
                 student_id=reg.student_id,
+                kind=getattr(reg, "kind", "category"),
+                modality=getattr(reg, "modality", "gi"),
                 gender=reg.gender,
                 age_division_id=reg.age_division_id,
                 weight_class_id=reg.weight_class_id,
@@ -1186,7 +1723,7 @@ async def registrations_to_read_many(
                 payment_notes=reg.payment_notes,
                 payment_confirmed_at=reg.payment_confirmed_at,
                 competition_name=comp.name if comp else None,
-                registration_fee_amount=comp.registration_fee_amount if comp else None,
+                registration_fee_amount=getattr(reg, "registration_fee_amount", None),
                 registration_payment_instructions=comp.registration_payment_instructions if comp else None,
                 age_division_label=ad.label if ad else None,
                 weight_class_label=wc_lbl,
@@ -1326,6 +1863,7 @@ async def attach_registration_payment_receipt(
     st = await session.get(Student, reg.student_id)
     if st is None or st.user_id != user.id:
         raise HTTPException(status_code=403, detail="Sem permissão")
+    reg = await _resolve_billing_anchor_registration(session, reg)
     if reg.payment_status not in (REG_PAY_PENDING_PAYMENT, REG_PAY_REJECTED):
         raise HTTPException(
             status_code=400,
@@ -1352,6 +1890,7 @@ async def confirm_registration_payment(
     reg = await session.get(CompetitionRegistration, registration_id)
     if reg is None or reg.competition_id != competition_id:
         raise HTTPException(status_code=404, detail="Inscrição não encontrada")
+    reg = await _resolve_billing_anchor_registration(session, reg)
     if reg.payment_status == REG_PAY_PENDING_CONFIRMATION:
         pass
     elif reg.payment_status == REG_PAY_PENDING_PAYMENT:
@@ -1383,6 +1922,7 @@ async def reject_registration_payment(
     reg = await session.get(CompetitionRegistration, registration_id)
     if reg is None or reg.competition_id != competition_id:
         raise HTTPException(status_code=404, detail="Inscrição não encontrada")
+    reg = await _resolve_billing_anchor_registration(session, reg)
     if reg.payment_status != REG_PAY_PENDING_CONFIRMATION:
         raise HTTPException(status_code=400, detail="Nenhum comprovante aguardando análise")
     reg.payment_status = REG_PAY_REJECTED
@@ -1432,7 +1972,12 @@ async def search_registration_for_weigh_in(
             CompetitionWeightClass,
             CompetitionWeightClass.id == CompetitionRegistration.weight_class_id,
         )
-        .where(CompetitionRegistration.competition_id == competition_id)
+        .where(
+            CompetitionRegistration.competition_id == competition_id,
+            CompetitionRegistration.payment_status.in_(
+                (REG_PAY_NOT_APPLICABLE, REG_PAY_CONFIRMED)
+            ),
+        )
     )
     if q.isdigit():
         stmt = stmt.where(
@@ -1902,6 +2447,53 @@ async def generate_all_brackets(
     )
 
 
+async def clear_all_brackets_and_matches(
+    session: AsyncSession,
+    user: User,
+    competition_id: int,
+) -> schemas.BracketsClearAllResponse:
+    """
+    Exclui todas as chaves (competition_brackets) e lutas (competition_matches) de um evento.
+    Também remove pódios de categoria (competition_awards) derivados dessas lutas.
+    """
+    comp = await get_competition(session, user, competition_id)
+    _assert_organizer(comp, user)
+
+    r = await session.execute(
+        select(CompetitionBracket.id).where(CompetitionBracket.competition_id == competition_id)
+    )
+    bracket_ids = [int(x) for x in r.scalars().all()]
+
+    deleted_matches = 0
+    deleted_brackets = 0
+
+    if bracket_ids:
+        res_m = await session.execute(
+            delete(CompetitionMatch).where(CompetitionMatch.bracket_id.in_(bracket_ids))
+        )
+        deleted_matches = int(res_m.rowcount or 0)
+
+        res_b = await session.execute(
+            delete(CompetitionBracket).where(CompetitionBracket.id.in_(bracket_ids))
+        )
+        deleted_brackets = int(res_b.rowcount or 0)
+
+    res_a = await session.execute(
+        delete(CompetitionAward).where(
+            CompetitionAward.competition_id == competition_id,
+            CompetitionAward.kind == "category",
+        )
+    )
+    deleted_awards = int(res_a.rowcount or 0)
+
+    await session.commit()
+    return schemas.BracketsClearAllResponse(
+        deleted_brackets=deleted_brackets,
+        deleted_matches=deleted_matches,
+        deleted_awards=deleted_awards,
+    )
+
+
 async def promote_registration(
     session: AsyncSession,
     user: User,
@@ -2345,6 +2937,18 @@ async def finish_match(
             cm.ended_at = None
             cm.referee_decision_used = False
             cm.timer_running = False
+
+    # Se esta luta for a Final (não tem filhos), sincroniza pódio/medalhas automaticamente.
+    # Isso garante que o painel de premiação considere todos os atletas envolvidos na chave.
+    child_count = await session.scalar(
+        select(func.count())
+        .select_from(CompetitionMatch)
+        .where(or_(CompetitionMatch.feeder_red_match_id == m.id, CompetitionMatch.feeder_blue_match_id == m.id))
+    )
+    if int(child_count or 0) == 0 and m.match_status == "completed":
+        br2 = await session.get(CompetitionBracket, m.bracket_id)
+        if br2 is not None and br2.competition_id == competition_id:
+            await _sync_category_awards_from_matches(session, competition_id, br2)
 
     await session.commit()
     await session.refresh(m)

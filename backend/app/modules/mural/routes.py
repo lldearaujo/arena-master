@@ -21,7 +21,13 @@ UserDep = Annotated[User, Depends(get_current_user)]
 async def list_my_mural(user: UserDep, session: SessionDep) -> list[schemas.MuralPostRead]:
   if user.dojo_id is None:
     return []
-  rows = await service.list_mural_posts(session, user.dojo_id, user_id=user.id)
+  modalidade: str | None = None
+  if user.role == "aluno":
+    student = await students_service.get_student_for_user(session, user)
+    modalidade = (student.modalidade or "").strip() if student is not None else None
+  rows = await service.list_mural_posts(
+      session, user.dojo_id, user_id=user.id, modalidade=modalidade
+  )
   result = []
   for post, user_avatar, likes_count, liked_by_me in rows:
     # Usa avatar do User (atual) quando disponível, senão o gravado no post
@@ -32,6 +38,22 @@ async def list_my_mural(user: UserDep, session: SessionDep) -> list[schemas.Mura
     data.liked_by_me = bool(liked_by_me)
     result.append(data)
   return result
+
+
+@router.get("/unread-count", response_model=schemas.MuralUnreadCount)
+async def mural_unread_count(user: UserDep, session: SessionDep) -> schemas.MuralUnreadCount:
+    if user.dojo_id is None:
+        return schemas.MuralUnreadCount(unread_count=0)
+    count = await service.get_unread_mural_posts_count(
+        session, dojo_id=user.dojo_id, user=user
+    )
+    return schemas.MuralUnreadCount(unread_count=count)
+
+
+@router.post("/mark-seen", response_model=schemas.MuralSeenState)
+async def mark_mural_seen(user: UserDep, session: SessionDep) -> schemas.MuralSeenState:
+    last_seen_at = await service.mark_mural_seen(session, user=user)
+    return schemas.MuralSeenState(last_seen_at=last_seen_at)
 
 
 @router.post(
@@ -58,6 +80,32 @@ async def create_mural_post(
         student = await students_service.get_student_for_user(session, user)
         if student is not None:
             author_name = student.name
+        # Aluno publica apenas na sua modalidade.
+        modalidade = (student.modalidade or "").strip() if student is not None else ""
+        if not modalidade:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Aluno sem modalidade definida; não é possível publicar no mural",
+            )
+        modalidades = [modalidade]
+    else:
+        # Admin escolhe para quais modalidades publicar.
+        raw = payload.modalidades or []
+        cleaned = [str(x).strip() for x in raw if str(x).strip()]
+        # Remove duplicatas por casefold preservando o primeiro.
+        seen: set[str] = set()
+        modalidades = []
+        for m in cleaned:
+            key = m.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            modalidades.append(m)
+        if not modalidades:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selecione ao menos uma modalidade para publicar o recado",
+            )
 
     post = await service.create_mural_post(
         session,
@@ -67,6 +115,7 @@ async def create_mural_post(
         author_name=author_name,
         author_id=user.id,
         author_avatar_url=user.avatar_url,
+        modalidades=modalidades,
         pinned=pinned,
     )
     return schemas.MuralPostRead.model_validate(post)
@@ -79,6 +128,22 @@ async def update_mural_post(
     admin: AdminDep,
     session: SessionDep,
 ) -> schemas.MuralPostRead:
+    modalidades = None
+    if payload.modalidades is not None:
+        cleaned = [str(x).strip() for x in (payload.modalidades or []) if str(x).strip()]
+        seen: set[str] = set()
+        modalidades = []
+        for m in cleaned:
+            key = m.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            modalidades.append(m)
+        if not modalidades:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selecione ao menos uma modalidade",
+            )
     post = await service.update_mural_post(
         session,
         admin.dojo_id,
@@ -86,6 +151,7 @@ async def update_mural_post(
         title=payload.title,
         content=payload.content,
         pinned=payload.pinned,
+        modalidades=modalidades,
     )
     if post is None:
         raise HTTPException(

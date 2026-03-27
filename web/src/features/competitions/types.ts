@@ -46,9 +46,15 @@ export type Competition = {
   organizer_dojo_name?: string | null;
   organizer_logo_url?: string | null;
   registration_fee_amount?: number | null;
+  registration_fee_amount_1?: number | null;
+  registration_fee_amount_2?: number | null;
+  registration_fee_amount_3?: number | null;
+  registration_fee_amount_4?: number | null;
   registration_payment_instructions?: string | null;
   /** Modalidade "macro" do evento (ex.: "Jiu-Jitsu") */
   event_modality?: string | null;
+  /** Texto exibido ao aluno na página do evento */
+  description?: string | null;
 };
 
 export type AgeDivision = {

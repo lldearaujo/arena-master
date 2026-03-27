@@ -191,7 +191,7 @@ export default function MinhasTurmasScreen() {
           {(mutation.error ?? cancelMutation.error) instanceof Error
             ? (mutation.error as any)?.response?.data?.detail ??
               (cancelMutation.error as any)?.response?.data?.detail ??
-              (mutation.error ?? cancelMutation.error).message
+              ((mutation.error ?? cancelMutation.error) as any)?.message
             : "Erro ao processar check-in."}
         </Text>
       )}

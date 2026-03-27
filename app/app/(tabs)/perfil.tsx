@@ -616,7 +616,12 @@ export default function PerfilScreen() {
             padding: tokens.space.lg,
             marginBottom: tokens.space.lg,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: "rgba(255,255,255,0.10)",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.22,
+            shadowRadius: 18,
+            elevation: 6,
           }}
         >
           <Pressable
@@ -626,7 +631,9 @@ export default function PerfilScreen() {
               width: 88,
               height: 88,
               borderRadius: 44,
-              backgroundColor: tokens.color.borderStrong,
+              backgroundColor: "rgba(255,255,255,0.10)",
+              borderWidth: 1,
+              borderColor: "rgba(184,158,93,0.35)",
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",
@@ -641,9 +648,67 @@ export default function PerfilScreen() {
             )}
           </Pressable>
           <View style={{ flex: 1, marginLeft: isVeryNarrow ? 0 : tokens.space.lg, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: tokens.color.textOnPrimary,
+                    fontWeight: "900",
+                    fontSize: tokens.text.lg,
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {displayName}
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    marginTop: 4,
+                    color: "rgba(255,255,255,0.65)",
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {dojo?.name ?? "—"}
+                </Text>
+              </View>
+
+              {isAluno && (
+                <Pressable
+                  onPress={() => {
+                    setNameInput((student?.name ?? "") as string);
+                    setBirthDateInput(formatBirthDateForInput(student?.birth_date));
+                    setWeightKgInput(
+                      student?.weight_kg === null || student?.weight_kg === undefined
+                        ? ""
+                        : String(student.weight_kg).replace(".", ","),
+                    );
+                    setIsPersonalDataOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Editar dados pessoais"
+                  style={{
+                    borderRadius: 999,
+                    width: 40,
+                    height: 40,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(184,158,93,0.14)",
+                    borderWidth: 1,
+                    borderColor: "rgba(184,158,93,0.30)",
+                  }}
+                >
+                  <Pencil size={18} color={tokens.color.primary} strokeWidth={2.6} />
+                </Pressable>
+              )}
+            </View>
+
+            <View style={{ height: 10 }} />
+
             {(() => {
               const rows: { label: string; value: string }[] = [
-                { label: isAluno ? "Aluno" : "Nome", value: displayName },
+                // Nome e dojo já aparecem no cabeçalho do card
               ];
               if (!isAluno || showGraduacaoNoPerfil) {
                 rows.push({
@@ -665,41 +730,10 @@ export default function PerfilScreen() {
                   value: formatWeightKg(student?.weight_kg),
                 });
               }
-              rows.push({ label: "Dojo", value: dojo?.name ?? "—" });
               return rows.map((r, i) => (
                 <ProfileField key={`${r.label}-${i}`} label={r.label} value={r.value} isLast={i === rows.length - 1} />
               ));
             })()}
-
-            {isAluno && (
-              <Pressable
-                onPress={() => {
-                  setNameInput((student?.name ?? "") as string);
-                  setBirthDateInput(formatBirthDateForInput(student?.birth_date));
-                  setWeightKgInput(
-                    student?.weight_kg === null || student?.weight_kg === undefined
-                      ? ""
-                      : String(student.weight_kg).replace(".", ","),
-                  );
-                  setIsPersonalDataOpen(true);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Editar dados pessoais"
-                style={{
-                  marginTop: tokens.space.md,
-                  alignSelf: "flex-start",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.14)",
-                  borderRadius: 999,
-                  width: 36,
-                  height: 36,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Pencil size={18} color={tokens.color.textOnPrimary} strokeWidth={2.4} />
-              </Pressable>
-            )}
           </View>
         </View>
 

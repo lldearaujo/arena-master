@@ -75,11 +75,16 @@ export function CompetitionManagePage() {
     "all" | "pending_confirmation" | "pending_payment" | "confirmed" | "rejected" | "not_applicable"
   >("pending_confirmation");
   const [feeAmount, setFeeAmount] = useState("");
+  const [fee1, setFee1] = useState("");
+  const [fee2, setFee2] = useState("");
+  const [fee3, setFee3] = useState("");
+  const [fee4, setFee4] = useState("");
   const [feeInstr, setFeeInstr] = useState("");
   const [inscritosQ, setInscritosQ] = useState("");
   const [opSubTab, setOpSubTab] = useState<"pesagem" | "chaves" | "tatames" | "lutas">("pesagem");
   const [eventStartsAtLocal, setEventStartsAtLocal] = useState<string>("");
   const [eventModality, setEventModality] = useState<string>("");
+  const [eventDescription, setEventDescription] = useState<string>("");
   const [bracketsMsg, setBracketsMsg] = useState<string | null>(null);
   const [collapsedWeighGroups, setCollapsedWeighGroups] = useState<Record<string, boolean>>({});
   const [collapsedFaixaGroups, setCollapsedFaixaGroups] = useState<Set<string>>(new Set());
@@ -370,7 +375,9 @@ export function CompetitionManagePage() {
           r.age_division_id === br.age_division_id &&
           r.weight_class_id === br.weight_class_id &&
           r.gender === br.gender &&
-          r.status === "weighed_in",
+          r.status === "weighed_in" &&
+          // Consistente com o backend: só conta atleta que entra na chave (pagamento liberado).
+          (r.payment_status === "not_applicable" || r.payment_status === "confirmed"),
       ).length;
       map.set(br.id, n);
     }
@@ -424,12 +431,15 @@ export function CompetitionManagePage() {
       }
       const maxRound = Math.max(...brMatches.map((m) => m.round_index));
       const finalMatch = brMatches.find((m) => m.round_index === maxRound);
-      if (finalMatch?.match_status === "completed") {
-        if (finalMatch.winner_registration_id) placements.set(finalMatch.winner_registration_id, "gold");
+      const finalHasBothSides = !!finalMatch?.red_registration_id && !!finalMatch?.blue_registration_id;
+      const finalHasWinner = !!finalMatch?.winner_registration_id;
+      const finalIsValidResult = finalMatch?.match_status === "completed" && finalHasBothSides && finalHasWinner;
+      if (finalIsValidResult) {
+        placements.set(finalMatch!.winner_registration_id!, "gold");
         const silverId =
-          finalMatch.winner_registration_id === finalMatch.red_registration_id
-            ? finalMatch.blue_registration_id
-            : finalMatch.red_registration_id;
+          finalMatch!.winner_registration_id === finalMatch!.red_registration_id
+            ? finalMatch!.blue_registration_id
+            : finalMatch!.red_registration_id;
         if (silverId) placements.set(silverId, "silver");
       }
       if (maxRound >= 1) {
@@ -469,7 +479,13 @@ export function CompetitionManagePage() {
       if (brMatches.length > 0) {
         const maxRound = Math.max(...brMatches.map((m) => m.round_index));
         const finalMatch = brMatches.find((m) => m.round_index === maxRound);
-        pendingFinal = !finalMatch || finalMatch.match_status !== "completed";
+        // Considera pendente também quando a final foi "fechada" com apenas 1 lado (WO prematuro).
+        pendingFinal =
+          !finalMatch ||
+          finalMatch.match_status !== "completed" ||
+          !finalMatch.red_registration_id ||
+          !finalMatch.blue_registration_id ||
+          !finalMatch.winner_registration_id;
         if (maxRound >= 1) {
           pendingSemiCount = brMatches.filter(
             (m) => m.round_index === maxRound - 1 && m.match_status !== "completed",
@@ -1063,10 +1079,26 @@ export function CompetitionManagePage() {
         ? String(comp.registration_fee_amount)
         : "",
     );
+    setFee1(comp.registration_fee_amount_1 != null && comp.registration_fee_amount_1 > 0 ? String(comp.registration_fee_amount_1) : "");
+    setFee2(comp.registration_fee_amount_2 != null && comp.registration_fee_amount_2 > 0 ? String(comp.registration_fee_amount_2) : "");
+    setFee3(comp.registration_fee_amount_3 != null && comp.registration_fee_amount_3 > 0 ? String(comp.registration_fee_amount_3) : "");
+    setFee4(comp.registration_fee_amount_4 != null && comp.registration_fee_amount_4 > 0 ? String(comp.registration_fee_amount_4) : "");
     setFeeInstr(comp.registration_payment_instructions ?? "");
     setEventStartsAtLocal(comp.event_starts_at ? isoToDatetimeLocalValue(comp.event_starts_at) : "");
     setEventModality((comp.event_modality ?? "").trim());
-  }, [comp?.id, comp?.registration_fee_amount, comp?.registration_payment_instructions, comp?.event_starts_at, comp?.event_modality]);
+    setEventDescription((comp.description ?? "").trim());
+  }, [
+    comp?.id,
+    comp?.registration_fee_amount,
+    comp?.registration_fee_amount_1,
+    comp?.registration_fee_amount_2,
+    comp?.registration_fee_amount_3,
+    comp?.registration_fee_amount_4,
+    comp?.registration_payment_instructions,
+    comp?.event_starts_at,
+    comp?.event_modality,
+    comp?.description,
+  ]);
 
   const saveFeeMut = useMutation({
     mutationFn: async () => {
@@ -1074,6 +1106,26 @@ export function CompetitionManagePage() {
       await api.patch(`/api/competitions/${competitionId}`, {
         registration_fee_amount: v != null && !Number.isNaN(v) && v > 0 ? v : null,
         registration_payment_instructions: feeInstr.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["competition", competitionId] });
+      qc.invalidateQueries({ queryKey: ["competitions"] });
+    },
+  });
+
+  const saveFeeTiersMut = useMutation({
+    mutationFn: async () => {
+      const n = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
+      const v1 = n(fee1);
+      const v2 = n(fee2);
+      const v3 = n(fee3);
+      const v4 = n(fee4);
+      await api.patch(`/api/competitions/${competitionId}`, {
+        registration_fee_amount_1: v1 != null && !Number.isNaN(v1) && v1 > 0 ? v1 : null,
+        registration_fee_amount_2: v2 != null && !Number.isNaN(v2) && v2 > 0 ? v2 : null,
+        registration_fee_amount_3: v3 != null && !Number.isNaN(v3) && v3 > 0 ? v3 : null,
+        registration_fee_amount_4: v4 != null && !Number.isNaN(v4) && v4 > 0 ? v4 : null,
       });
     },
     onSuccess: () => {
@@ -1102,6 +1154,17 @@ export function CompetitionManagePage() {
     mutationFn: async () => {
       const v = eventModality.trim();
       await api.patch(`/api/competitions/${competitionId}`, { event_modality: v || null });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["competition", competitionId] });
+      qc.invalidateQueries({ queryKey: ["competitions"] });
+    },
+  });
+
+  const saveEventDescriptionMut = useMutation({
+    mutationFn: async () => {
+      const v = eventDescription.trim();
+      await api.patch(`/api/competitions/${competitionId}`, { description: v || null });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["competition", competitionId] });
@@ -1436,6 +1499,54 @@ export function CompetitionManagePage() {
         </div>
       </Section>
 
+      <Section title="Descrição do evento (app)">
+        <p style={{ fontSize: 14, color: tokens.color.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
+          Esse texto aparece para o aluno na página de apresentação do evento, antes da inscrição.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <textarea
+            value={eventDescription}
+            onChange={(e) => setEventDescription(e.target.value)}
+            placeholder="Ex.: Regras do evento, local, horários, observações importantes..."
+            rows={6}
+            style={{
+              width: "100%",
+              resize: "vertical",
+              padding: 10,
+              borderRadius: tokens.radius.sm,
+              border: `1px solid ${tokens.color.borderSubtle}`,
+              background: tokens.color.bgBody,
+              color: tokens.color.textPrimary,
+              lineHeight: 1.5,
+            }}
+          />
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, color: tokens.color.textMuted }}>
+              Atual: {(comp?.description ?? "").trim() ? "Definida" : "—"}
+            </div>
+
+            <button
+              type="button"
+              disabled={saveEventDescriptionMut.isPending}
+              onClick={() => saveEventDescriptionMut.mutate()}
+              style={{
+                padding: "10px 16px",
+                fontWeight: 600,
+                backgroundColor: tokens.color.primary,
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                height: 40,
+              }}
+            >
+              {saveEventDescriptionMut.isPending ? "Guardando..." : "Guardar descrição"}
+            </button>
+          </div>
+        </div>
+      </Section>
+
       <Section title="Premiações (categorias e absolutos)">
         <p style={{ fontSize: 14, color: tokens.color.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
           Configure as premiações por categoria e/ou por absoluto. Use “Categoria” para premiar cada divisão (idade + gênero + modalidade).
@@ -1629,6 +1740,73 @@ export function CompetitionManagePage() {
           </Link>{" "}
           para cadastrar chave PIX e QR.
         </p>
+
+        <div
+          style={{
+            border: `1px solid ${tokens.color.borderSubtle}`,
+            borderRadius: tokens.radius.md,
+            padding: 12,
+            background: "white",
+            marginBottom: 14,
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>Taxas por quantidade de inscrições (recomendado)</div>
+          <div style={{ fontSize: 13, color: tokens.color.textMuted, lineHeight: 1.5 }}>
+            Configure valores diferentes para quando o atleta fizer 1, 2, 3 ou 4 inscrições (ex.: categoria, absoluto, Gi, No-Gi). Se estas taxas
+            estiverem definidas, elas serão usadas no cálculo do pagamento.
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12, alignItems: "flex-end" }}>
+            {[
+              { label: "1 inscrição (R$)", value: fee1, setValue: setFee1, ph: "Ex.: 90" },
+              { label: "2 inscrições (R$)", value: fee2, setValue: setFee2, ph: "Ex.: 160" },
+              { label: "3 inscrições (R$)", value: fee3, setValue: setFee3, ph: "Ex.: 210" },
+              { label: "4 inscrições (R$)", value: fee4, setValue: setFee4, ph: "Ex.: 240" },
+            ].map((f) => (
+              <label key={f.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>{f.label}</span>
+                <input
+                  value={f.value}
+                  onChange={(e) => f.setValue(e.target.value)}
+                  placeholder={f.ph}
+                  style={{
+                    padding: 8,
+                    width: 160,
+                    borderRadius: tokens.radius.sm,
+                    border: `1px solid ${tokens.color.borderSubtle}`,
+                  }}
+                />
+              </label>
+            ))}
+
+            <button
+              type="button"
+              disabled={saveFeeTiersMut.isPending}
+              onClick={() => saveFeeTiersMut.mutate()}
+              style={{
+                padding: "10px 16px",
+                fontWeight: 600,
+                backgroundColor: tokens.color.primary,
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                height: 40,
+              }}
+            >
+              {saveFeeTiersMut.isPending ? "Guardando..." : "Guardar taxas"}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 13, color: tokens.color.textMuted }}>
+            Atual:{" "}
+            {comp?.registration_fee_amount_1 != null ? `1x R$ ${comp.registration_fee_amount_1}` : "1x —"} ·{" "}
+            {comp?.registration_fee_amount_2 != null ? `2x R$ ${comp.registration_fee_amount_2}` : "2x —"} ·{" "}
+            {comp?.registration_fee_amount_3 != null ? `3x R$ ${comp.registration_fee_amount_3}` : "3x —"} ·{" "}
+            {comp?.registration_fee_amount_4 != null ? `4x R$ ${comp.registration_fee_amount_4}` : "4x —"}
+          </div>
+        </div>
+
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Taxa única (legado)</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={{ fontSize: tokens.text.sm, color: tokens.color.textMuted }}>Valor (R$)</span>

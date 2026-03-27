@@ -17,6 +17,9 @@ class User(Base):
     dojo_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mural_last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow

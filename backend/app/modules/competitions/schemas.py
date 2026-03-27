@@ -15,8 +15,13 @@ class CompetitionCreate(BaseModel):
     transition_buffer_seconds: int = 90
     is_published: bool = False
     registration_fee_amount: float | None = Field(default=None, ge=0)
+    registration_fee_amount_1: float | None = Field(default=None, ge=0)
+    registration_fee_amount_2: float | None = Field(default=None, ge=0)
+    registration_fee_amount_3: float | None = Field(default=None, ge=0)
+    registration_fee_amount_4: float | None = Field(default=None, ge=0)
     registration_payment_instructions: str | None = None
     event_modality: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class CompetitionUpdate(BaseModel):
@@ -27,8 +32,13 @@ class CompetitionUpdate(BaseModel):
     transition_buffer_seconds: int | None = None
     is_published: bool | None = None
     registration_fee_amount: float | None = Field(default=None, ge=0)
+    registration_fee_amount_1: float | None = Field(default=None, ge=0)
+    registration_fee_amount_2: float | None = Field(default=None, ge=0)
+    registration_fee_amount_3: float | None = Field(default=None, ge=0)
+    registration_fee_amount_4: float | None = Field(default=None, ge=0)
     registration_payment_instructions: str | None = None
     event_modality: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class CompetitionRead(BaseModel):
@@ -44,8 +54,13 @@ class CompetitionRead(BaseModel):
     created_at: datetime
     federation_preset_code: str | None = None
     registration_fee_amount: float | None = None
+    registration_fee_amount_1: float | None = None
+    registration_fee_amount_2: float | None = None
+    registration_fee_amount_3: float | None = None
+    registration_fee_amount_4: float | None = None
     registration_payment_instructions: str | None = None
     event_modality: str | None = None
+    description: str | None = None
     banner_url: str | None = None
     # Preenchidos na leitura (não vêm do ORM) — útil para inscrição / UI pública.
     organizer_dojo_name: str | None = None
@@ -78,6 +93,70 @@ class CompetitionPrizeRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PublicCompetitionPrizeRead(BaseModel):
+    """Premiação exibível para alunos (evento publicado)."""
+
+    id: int
+    competition_id: int
+    kind: str
+    age_division_id: int | None = None
+    faixa_id: int | None = None
+    faixa_label: str | None = None
+    gender: str
+    modality: str
+    place: int
+    reward: str
+
+    class Config:
+        from_attributes = True
+
+
+class StudentInitialMatchRead(BaseModel):
+    """Luta atual/próxima do atleta na competição, quando existir.
+
+    - Preferência: próxima luta pendente (scheduled/warm_up/on_deck/on_mat)
+    - Fallback: última luta finalizada (completed)
+    """
+
+    match_id: int
+    competition_id: int
+    registration_id: int
+    my_side: str  # "red" | "blue"
+    opponent_name: str | None = None
+    mat_id: int | None = None
+    mat_name: str | None = None
+    queue_order: int | None = None
+    estimated_start_at: datetime | None = None
+    match_status: str
+    round_index: int
+    red_score: int
+    blue_score: int
+    finish_method: str | None = None
+    my_result: str  # "pending" | "win" | "loss" | "draw"
+
+
+class StudentBracketMatchRead(BaseModel):
+    """Luta da chave do atleta (histórico + próxima), com resultado quando aplicável."""
+
+    match_id: int
+    bracket_id: int
+    competition_id: int
+    registration_id: int
+    round_index: int
+    position_in_round: int
+    my_side: str  # "red" | "blue"
+    opponent_name: str | None = None
+    mat_id: int | None = None
+    mat_name: str | None = None
+    queue_order: int | None = None
+    estimated_start_at: datetime | None = None
+    match_status: str
+    red_score: int
+    blue_score: int
+    finish_method: str | None = None
+    my_result: str  # "pending" | "win" | "loss" | "draw"
 
 
 class CompetitionAwardCreate(BaseModel):
@@ -230,17 +309,22 @@ class EligibilityOptionsResponse(BaseModel):
 class RegistrationCreate(BaseModel):
     student_id: int
     gender: str = Field(..., pattern="^(male|female)$")
+    modality: str = Field(..., pattern="^(gi|nogi)$")
     age_division_id: int
     weight_class_id: int
+    also_absolute: bool = False
 
 
 class RegistrationRead(BaseModel):
     id: int
     competition_id: int
     student_id: int
+    kind: str = "category"
+    modality: str = "gi"
     gender: str
-    age_division_id: int
-    weight_class_id: int
+    faixa_id: int | None = None
+    age_division_id: int | None = None
+    weight_class_id: int | None = None
     status: str
     declared_weight_kg: float | None = None
     actual_weight_kg: float | None
@@ -348,6 +432,12 @@ class BracketsGenerateAllResponse(BaseModel):
     skipped_weight_classes: int
     generated_bracket_ids: list[int]
     warnings: list[str] = Field(default_factory=list)
+
+
+class BracketsClearAllResponse(BaseModel):
+    deleted_brackets: int
+    deleted_matches: int
+    deleted_awards: int
 
 
 class BracketRead(BaseModel):

@@ -42,10 +42,16 @@ class Competition(Base):
     federation_preset_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Valor da inscrição (None ou 0 = sem cobrança; confirmação automática).
     registration_fee_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Taxas isoladas por quantidade de inscrições (1..4). Quando definidas, têm prioridade no cálculo.
+    registration_fee_amount_1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    registration_fee_amount_2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    registration_fee_amount_3: Mapped[float | None] = mapped_column(Float, nullable=True)
+    registration_fee_amount_4: Mapped[float | None] = mapped_column(Float, nullable=True)
     registration_payment_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Modalidade "macro" do evento (ex.: "Jiu-Jitsu", "Judô") para filtrar catálogo do app.
     # Deve corresponder ao texto exibido em `students.modalidade` (catálogo do dojo).
     event_modality: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     banner_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -115,7 +121,15 @@ class CompetitionBeltEligibility(Base):
 
 class CompetitionRegistration(Base):
     __tablename__ = "competition_registrations"
-    __table_args__ = (UniqueConstraint("competition_id", "student_id", name="uq_comp_student"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "competition_id",
+            "student_id",
+            "kind",
+            "modality",
+            name="uq_comp_student_kind_modality",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     competition_id: Mapped[int] = mapped_column(
@@ -124,12 +138,25 @@ class CompetitionRegistration(Base):
     student_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("students.id", ondelete="CASCADE"), index=True
     )
+    # category (idade+peso) | absolute (absoluto da faixa)
+    kind: Mapped[str] = mapped_column(String(16), default="category", index=True)
+    # gi | nogi
+    modality: Mapped[str] = mapped_column(String(8), default="gi", index=True)
     gender: Mapped[str] = mapped_column(String(16))
-    age_division_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("competition_age_divisions.id", ondelete="CASCADE"), index=True
+    faixa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("faixas.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    weight_class_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("competition_weight_classes.id", ondelete="CASCADE"), index=True
+    age_division_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("competition_age_divisions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    weight_class_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("competition_weight_classes.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     status: Mapped[str] = mapped_column(String(32), default="registered", index=True)
     declared_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -147,6 +174,7 @@ class CompetitionRegistration(Base):
     payment_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    registration_fee_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )

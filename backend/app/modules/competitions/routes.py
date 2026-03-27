@@ -266,6 +266,41 @@ async def list_prizes_ep(
     return [schemas.CompetitionPrizeRead.model_validate(x) for x in rows]
 
 
+@router.get(
+    "/public/{competition_id}/prizes",
+    response_model=list[schemas.PublicCompetitionPrizeRead],
+)
+async def list_public_prizes_ep(
+    competition_id: int,
+    session: SessionDep,
+) -> list[schemas.PublicCompetitionPrizeRead]:
+    return await service.list_public_prizes(session, competition_id)
+
+
+@router.get(
+    "/{competition_id}/me/initial-match",
+    response_model=schemas.StudentInitialMatchRead | None,
+)
+async def my_initial_match_ep(
+    competition_id: int,
+    user: UserDep,
+    session: SessionDep,
+) -> schemas.StudentInitialMatchRead | None:
+    return await service.get_my_initial_match(session, user, competition_id)
+
+
+@router.get(
+    "/{competition_id}/me/bracket-matches",
+    response_model=list[schemas.StudentBracketMatchRead],
+)
+async def my_bracket_matches_ep(
+    competition_id: int,
+    user: UserDep,
+    session: SessionDep,
+) -> list[schemas.StudentBracketMatchRead]:
+    return await service.get_my_bracket_matches(session, user, competition_id)
+
+
 @router.post(
     "/{competition_id}/prizes",
     response_model=schemas.CompetitionPrizeRead,
@@ -579,6 +614,18 @@ async def list_brackets_ep(
     return [schemas.BracketRead.model_validate(x) for x in rows]
 
 
+@router.post(
+    "/{competition_id}/brackets/clear-all",
+    response_model=schemas.BracketsClearAllResponse,
+)
+async def clear_all_brackets_ep(
+    competition_id: int,
+    admin: UserDep,
+    session: SessionDep,
+) -> schemas.BracketsClearAllResponse:
+    return await service.clear_all_brackets_and_matches(session, admin, competition_id)
+
+
 @router.post("/{competition_id}/registrations/{registration_id}/promote", response_model=schemas.RegistrationRead)
 async def promote_reg(
     competition_id: int,
@@ -634,6 +681,11 @@ async def assign_mat_ep(
 async def recompute_ep(competition_id: int, admin: UserDep, session: SessionDep) -> None:
     await service.recompute_mat_schedule(session, competition_id)
     await _broadcast(competition_id, {"type": "schedule_recomputed"})
+
+
+@router.post("/{competition_id}/awards/recompute", status_code=status.HTTP_204_NO_CONTENT)
+async def recompute_awards_ep(competition_id: int, admin: UserDep, session: SessionDep) -> None:
+    await service.recompute_category_awards_from_matches(session, admin, competition_id)
 
 
 @router.get("/{competition_id}/matches", response_model=list[schemas.MatchRead])

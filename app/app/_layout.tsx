@@ -1,10 +1,10 @@
-import "../src/notifications/configurePush";
-
 import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { configurePushNotificationsIfAvailable } from "../src/notifications/configurePush";
 import { restoreSession } from "../src/api/client";
 import { tokens } from "../src/ui/tokens";
 
@@ -23,6 +23,11 @@ export default function RootLayout() {
       .catch(() => setSessionRestored(true));
   }, []);
 
+  useEffect(() => {
+    // Fire-and-forget: em Expo Go não faz nada.
+    void configurePushNotificationsIfAvailable();
+  }, []);
+
   if (!sessionRestored) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: tokens.color.bgBody }}>
@@ -33,9 +38,11 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
 

@@ -4,11 +4,20 @@ import { FormEvent, useState } from "react";
 import { api } from "../../api/client";
 import { tokens } from "../../ui/tokens";
 
+type ModalidadeListaItem = {
+  id: number | null;
+  name: string;
+  em_catalogo: boolean;
+  has_graduation_system: boolean;
+  skills_labels: string[] | null;
+};
+
 type MuralPost = {
   id: number;
   dojo_id: number;
   content: string;
   pinned: boolean;
+  modalidades?: string[] | null;
   author_name: string;
   likes_count: number;
   liked_by_me: boolean;
@@ -33,19 +42,36 @@ export function MuralPage() {
     },
   });
 
+  const { data: modalidades } = useQuery({
+    queryKey: ["modalidades"],
+    queryFn: async () => {
+      const res = await api.get<ModalidadeListaItem[]>("/api/modalidades");
+      return res.data;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(false);
   const [likersPostId, setLikersPostId] = useState<number | null>(null);
+  const [selectedModalidades, setSelectedModalidades] = useState<string[]>([]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const autoTitle =
         content.trim().split("\n")[0]?.slice(0, 80) || "Recado";
-      await api.post("/api/mural", { title: autoTitle, content, pinned });
+      await api.post("/api/mural", {
+        title: autoTitle,
+        content,
+        pinned,
+        modalidades: selectedModalidades,
+      });
     },
     onSuccess: () => {
       setContent("");
       setPinned(false);
+      setSelectedModalidades([]);
       queryClient.invalidateQueries({ queryKey: ["mural"] });
     },
   });
@@ -135,6 +161,7 @@ export function MuralPage() {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
+    if ((selectedModalidades?.length ?? 0) === 0) return;
     createMutation.mutate();
   };
 
@@ -160,6 +187,68 @@ export function MuralPage() {
           gap: tokens.space.sm,
         }}
       >
+        <div>
+          <label style={{ display: "block", fontSize: tokens.text.sm, marginBottom: 6 }}>
+            Publicar para modalidades
+          </label>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              padding: 10,
+              borderRadius: tokens.radius.md,
+              border: `1px solid ${tokens.color.borderSubtle}`,
+              backgroundColor: "white",
+            }}
+          >
+            {(modalidades ?? []).map((m) => {
+              const checked = selectedModalidades.includes(m.name);
+              return (
+                <label
+                  key={m.name}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: tokens.text.sm,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${checked ? tokens.color.primary : tokens.color.borderSubtle}`,
+                    backgroundColor: checked ? "rgba(184,158,93,0.10)" : "white",
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setSelectedModalidades((cur) => {
+                        const set = new Set(cur);
+                        if (next) set.add(m.name);
+                        else set.delete(m.name);
+                        return Array.from(set);
+                      });
+                    }}
+                  />
+                  {m.name}
+                </label>
+              );
+            })}
+            {(modalidades ?? []).length === 0 && (
+              <span style={{ color: tokens.color.textMuted, fontSize: tokens.text.xs }}>
+                Nenhuma modalidade cadastrada. Cadastre modalidades para direcionar recados.
+              </span>
+            )}
+          </div>
+          {(selectedModalidades?.length ?? 0) === 0 && (
+            <div style={{ marginTop: 6, color: tokens.color.error, fontSize: tokens.text.xs }}>
+              Selecione ao menos uma modalidade.
+            </div>
+          )}
+        </div>
         <div>
           <label style={{ display: "block", fontSize: tokens.text.sm, marginBottom: 4 }}>
             Mensagem
@@ -198,6 +287,12 @@ export function MuralPage() {
             color: tokens.color.textOnPrimary,
             cursor: "pointer",
             fontWeight: 500,
+            opacity:
+              createMutation.isPending ||
+              !content.trim() ||
+              (selectedModalidades?.length ?? 0) === 0
+                ? 0.7
+                : 1,
           }}
         >
           {createMutation.isPending ? "Publicando..." : "Publicar recado"}
@@ -310,6 +405,33 @@ export function MuralPage() {
                       Fixado
                     </span>
                   )}
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                      marginLeft: 6,
+                      alignItems: "center",
+                    }}
+                  >
+                    {((post.modalidades ?? []).length > 0 ? post.modalidades! : ["Todas"]).map((m) => (
+                      <span
+                        key={`${post.id}-${m}`}
+                        style={{
+                          fontSize: tokens.text.xs,
+                          padding: "2px 6px",
+                          borderRadius: 999,
+                          border: `1px solid ${tokens.color.borderSubtle}`,
+                          color: tokens.color.textMuted,
+                          backgroundColor: "white",
+                          lineHeight: 1.2,
+                        }}
+                        title="Modalidade(s) que verão este recado"
+                      >
+                        {m}
+                      </span>
+                    ))}
+                  </span>
                 </div>
                 <p
                   style={{

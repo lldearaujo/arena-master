@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { View, Text, ScrollView, TextInput, Pressable, Image, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 
 import { api } from "../../src/api/client";
 import { tokens } from "../../src/ui/tokens";
@@ -10,6 +11,11 @@ type Dojo = {
   id: number;
   name: string;
   logo_url: string | null;
+};
+
+type StudentMe = {
+  id: number;
+  modalidade: string | null;
 };
 
 type MuralPost = {
@@ -37,11 +43,22 @@ export default function MuralScreen() {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const isFocused = useIsFocused();
 
   const { data: dojo } = useQuery({
     queryKey: ["dojo-me"],
     queryFn: async () => {
       const res = await api.get<Dojo>("/api/dojos/me");
+      return res.data;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: studentMe } = useQuery({
+    queryKey: ["student-me"],
+    queryFn: async () => {
+      const res = await api.get<StudentMe>("/api/students/me");
       return res.data;
     },
     retry: false,
@@ -55,6 +72,23 @@ export default function MuralScreen() {
       return res.data;
     },
   });
+
+  const markSeenMutation = useMutation({
+    mutationFn: async () => {
+      await api.post("/api/mural/mark-seen");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mural-unread-count"] });
+    },
+  });
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (isLoading || error) return;
+    if (!data) return;
+    if (markSeenMutation.isPending) return;
+    markSeenMutation.mutate();
+  }, [isFocused, isLoading, error, data, markSeenMutation.isPending]);
 
   const [content, setContent] = useState("");
 
@@ -189,7 +223,7 @@ export default function MuralScreen() {
             marginBottom: tokens.space.xs,
           }}
         >
-          Mural do dojo
+          Mural{studentMe?.modalidade ? ` • ${studentMe.modalidade}` : " do dojo"}
         </Text>
       <Text
         style={{

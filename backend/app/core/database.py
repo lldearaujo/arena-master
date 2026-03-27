@@ -171,5 +171,21 @@ async def init_models() -> None:
                     """
                 )
             )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE mural_posts
+                    ADD COLUMN IF NOT EXISTS modalidades JSONB
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_mural_posts_modalidades_gin
+                    ON mural_posts USING GIN (modalidades)
+                    """
+                )
+            )
 
 

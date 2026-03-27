@@ -43,11 +43,24 @@ function resolveBaseUrl(): string {
     return "https://arenamasterbk.ideiasobria.online";
   }
 
-  // Em dispositivos/Expo Go, usamos o host do próprio servidor Expo
-  const hostUri = Constants.expoConfig?.hostUri;
+  // Em dispositivos/Expo Go, usamos o host do próprio servidor Metro/Expo.
+  // SDKs mais recentes podem não preencher expoConfig.hostUri; então tentamos várias fontes.
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Constants as any).expoGoConfig?.debuggerHost ??
+    // manifests antigos
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Constants as any).manifest?.debuggerHost ??
+    // EAS updates / manifest2
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Constants as any).manifest2?.extra?.expoClient?.hostUri ??
+    undefined;
   if (hostUri) {
-    const host = hostUri.split(":")[0]; // ex: "192.168.0.10:19000" -> "192.168.0.10"
-    return `http://${host}:8000`;
+    const host = String(hostUri).split(":")[0]; // "192.168.0.10:19000" -> "192.168.0.10"
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return `http://${host}:8000`;
+    }
   }
 
   // Fallback final
@@ -76,10 +89,11 @@ api.interceptors.request.use((config) => {
   }
   const tokens = useAuthStore.getState().tokens;
   if (tokens?.accessToken) {
-    config.headers = {
-      ...config.headers,
+    // Axios v1 tipa headers como AxiosHeaders; fazemos merge e forçamos o tipo.
+    config.headers = ({
+      ...(config.headers as any),
       Authorization: `Bearer ${tokens.accessToken}`,
-    };
+    } as any);
   }
   return config;
 });
@@ -159,7 +173,7 @@ export async function restoreSession() {
     };
     useAuthStore.setState({
       tokens: parsed.tokens,
-      user: parsed.user,
+      user: parsed.user as any,
     });
   } catch {
     await clearPersistedSession();

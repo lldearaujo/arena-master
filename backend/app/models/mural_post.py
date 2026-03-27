@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -20,6 +21,9 @@ class MuralPost(Base):
     )
     author_name: Mapped[str] = mapped_column(String(255))
     author_avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Lista de modalidades (por nome) para as quais o post é visível.
+    # None = legado/global (visível para todos no dojo).
+    modalidades: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow

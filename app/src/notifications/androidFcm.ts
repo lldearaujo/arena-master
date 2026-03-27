@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import { api } from "../api/client";
@@ -13,16 +12,17 @@ function storageKeyForUser(userId: number): string {
 }
 
 export function isLikelyExpoGo(): boolean {
-  return Constants.appOwnership === "expo";
+  return Constants.appOwnership === "expo" || Constants.appOwnership === "guest";
 }
 
 async function ensureAndroidNotificationChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
+  const Notifications: any = await import("expo-notifications");
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: "Avisos",
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notifications.AndroidImportance?.HIGH ?? 4,
     vibrationPattern: [0, 250, 250, 250],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
   });
 }
 
@@ -47,6 +47,7 @@ export async function registerAndroidFcmAndSync(userId: number): Promise<Registe
 
   await ensureAndroidNotificationChannel();
 
+  const Notifications: any = await import("expo-notifications");
   const { status: existing } = await Notifications.getPermissionsAsync();
   let finalStatus = existing;
   if (existing !== "granted") {

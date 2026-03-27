@@ -109,7 +109,10 @@ export function ScorekeeperPage() {
               r.age_division_id === br.age_division_id &&
               r.weight_class_id === br.weight_class_id &&
               r.gender === br.gender &&
-              r.status === "weighed_in",
+              r.status === "weighed_in" &&
+              // Mantém consistência com o backend: só entra na chave quem tem pagamento liberado.
+              // (not_applicable = evento gratuito; confirmed = pago/confirmado)
+              (r.payment_status === "not_applicable" || r.payment_status === "confirmed"),
           ).length
         : undefined;
     const athForLabel = ath != null && ath >= 2 ? ath : undefined;

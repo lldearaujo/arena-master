@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, CheckCircle2, ChevronRight, Search, Ticket } from "lucide-react-native";
+import { CalendarDays, CheckCircle2, ChevronRight, Clock, Search, Ticket } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -36,6 +36,7 @@ type CompetitionRead = {
   registration_fee_amount: number | null;
   registration_payment_instructions: string | null;
   event_modality: string | null;
+  description?: string | null;
   banner_url: string | null;
   organizer_dojo_name: string | null;
   organizer_logo_url: string | null;
@@ -52,6 +53,8 @@ type StudentMe = {
 type RegistrationSummary = {
   id: number;
   competition_id: number;
+  kind?: string;
+  modality?: string;
   status: string;
   payment_status: string;
   payment_receipt_path?: string | null;
@@ -79,6 +82,74 @@ type EligibilityOptionsResponse = {
   }[];
 };
 
+type PrizeRead = {
+  id: number;
+  competition_id: number;
+  kind: "category" | "absolute" | string;
+  age_division_id: number | null;
+  faixa_id: number | null;
+  faixa_label?: string | null;
+  gender: string;
+  modality: string;
+  place: number;
+  reward: string;
+};
+
+type StudentInitialMatchRead = {
+  match_id: number;
+  competition_id: number;
+  registration_id: number;
+  my_side: "red" | "blue" | string;
+  opponent_name: string | null;
+  mat_id: number | null;
+  mat_name: string | null;
+  queue_order: number | null;
+  estimated_start_at: string | null;
+  match_status: string;
+  round_index: number;
+  red_score: number;
+  blue_score: number;
+  finish_method: string | null;
+  my_result: "pending" | "win" | "loss" | "draw" | string;
+} | null;
+
+type StudentBracketMatchRead = {
+  match_id: number;
+  bracket_id: number;
+  competition_id: number;
+  registration_id: number;
+  round_index: number;
+  position_in_round: number;
+  my_side: "red" | "blue" | string;
+  opponent_name: string | null;
+  mat_id: number | null;
+  mat_name: string | null;
+  queue_order: number | null;
+  estimated_start_at: string | null;
+  match_status: string;
+  red_score: number;
+  blue_score: number;
+  finish_method: string | null;
+  my_result: "pending" | "win" | "loss" | "draw" | string;
+};
+
+const STAGE_FROM_FINAL = ["Final", "Semi-final", "Quartas de final", "Oitavas de final", "16ª de final", "32ª de final", "64ª de final"] as const;
+
+/** Inscrição efetiva no evento: isento ou pagamento confirmado pelo organizador. */
+function registrationPaymentCleared(ps: string | null | undefined): boolean {
+  const s = String(ps ?? "").trim().toLowerCase();
+  return s === "not_applicable" || s === "confirmed";
+}
+
+function bracketStageLabelFromTotalRounds(roundIndex: number, totalRounds: number): string {
+  const tr = Math.max(1, totalRounds);
+  const ri = Math.max(0, roundIndex);
+  const stepsFromFinal = tr - 1 - ri;
+  if (stepsFromFinal < 0) return `Rodada ${roundIndex + 1}`;
+  if (stepsFromFinal < STAGE_FROM_FINAL.length) return STAGE_FROM_FINAL[stepsFromFinal]!;
+  return `Rodada ${roundIndex + 1}`;
+}
+
 export default function CompeticoesScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -95,6 +166,7 @@ export default function CompeticoesScreen() {
   const [modality, setModality] = useState<"gi" | "nogi">("gi");
   const [ageDivisionId, setAgeDivisionId] = useState<number | null>(null);
   const [weightClassId, setWeightClassId] = useState<number | null>(null);
+  const [alsoAbsolute, setAlsoAbsolute] = useState(false);
   const [uploadingRegId, setUploadingRegId] = useState<number | null>(null);
   const [isPickingReceipt, setIsPickingReceipt] = useState(false);
 
@@ -135,8 +207,12 @@ export default function CompeticoesScreen() {
   });
 
   const regByCompetitionId = useMemo(() => {
-    const m = new Map<number, RegistrationSummary>();
-    for (const r of myRegs ?? []) m.set(r.competition_id, r);
+    const m = new Map<number, RegistrationSummary[]>();
+    for (const r of myRegs ?? []) {
+      const cur = m.get(r.competition_id) ?? [];
+      cur.push(r);
+      m.set(r.competition_id, cur);
+    }
     return m;
   }, [myRegs]);
 
@@ -185,6 +261,44 @@ export default function CompeticoesScreen() {
     } catch {
       return d.toISOString().slice(0, 10);
     }
+  }
+
+  function fmtDateTime(iso: string | null | undefined): string | null {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    try {
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return d.toISOString();
+    }
+  }
+
+  function fmtGenderPt(g: string | null | undefined): string {
+    const s = String(g ?? "").trim().toLowerCase();
+    if (s === "male") return "Masculino";
+    if (s === "female") return "Feminino";
+    return "—";
+  }
+
+  function fmtModalityPt(m: string | null | undefined): string {
+    const s = String(m ?? "").trim().toLowerCase();
+    if (s === "gi") return "Gi";
+    if (s === "nogi") return "No-Gi";
+    return "—";
+  }
+
+  function fmtPrizeKindPt(k: string | null | undefined): string {
+    const s = String(k ?? "").trim().toLowerCase();
+    if (s === "absolute") return "Absoluto";
+    if (s === "category") return "Categoria";
+    return "Premiação";
   }
 
   function mapPaymentStatusPt(
@@ -331,7 +445,69 @@ export default function CompeticoesScreen() {
     return null;
   }
 
-  const selectedReg = selected ? regByCompetitionId.get(selected.id) ?? null : null;
+  const selectedRegs = selected ? regByCompetitionId.get(selected.id) ?? [] : [];
+  // Preferimos usar a inscrição de categoria como "principal" para fluxos que dependem de age_division/weight_class
+  // (ex.: “Sua chave”, comprovante de pagamento).
+  const primaryReg = useMemo(() => {
+    if (!selectedRegs.length) return null;
+    return (
+      selectedRegs.find((r) => String(r.kind ?? "").toLowerCase() !== "absolute") ??
+      selectedRegs[0] ??
+      null
+    );
+  }, [selectedRegs]);
+
+  const clearedSelectedRegs = useMemo(
+    () => selectedRegs.filter((r) => registrationPaymentCleared(r.payment_status)),
+    [selectedRegs],
+  );
+
+  const allRegsPaymentCleared =
+    selectedRegs.length > 0 && selectedRegs.every((r) => registrationPaymentCleared(r.payment_status));
+
+  const clearedRegIdsKey = clearedSelectedRegs
+    .map((r) => r.id)
+    .sort((a, b) => a - b)
+    .join(",");
+
+  const {
+    data: prizes,
+    isLoading: prizesLoading,
+    isError: prizesIsError,
+    error: prizesError,
+  } = useQuery({
+    queryKey: ["competition-public-prizes", selected?.id],
+    queryFn: async () => {
+      if (!selected?.id) throw new Error("Evento inválido");
+      const res = await api.get<PrizeRead[]>(`/api/competitions/public/${selected.id}/prizes`);
+      return res.data;
+    },
+    enabled: !!selected?.id,
+    retry: false,
+  });
+
+  const { data: myInitialMatch, isLoading: initialMatchLoading } = useQuery({
+    queryKey: ["competition-my-initial-match", selected?.id, clearedRegIdsKey],
+    queryFn: async () => {
+      if (!selected?.id) throw new Error("Evento inválido");
+      const res = await api.get<StudentInitialMatchRead>(`/api/competitions/${selected.id}/me/initial-match`);
+      return res.data;
+    },
+    enabled: !!selected?.id && clearedSelectedRegs.length > 0,
+    retry: false,
+  });
+
+  const { data: myBracketMatches, isLoading: myBracketMatchesLoading } = useQuery({
+    queryKey: ["competition-my-bracket-matches", selected?.id, clearedRegIdsKey],
+    queryFn: async () => {
+      if (!selected?.id) throw new Error("Evento inválido");
+      const res = await api.get<StudentBracketMatchRead[]>(`/api/competitions/${selected.id}/me/bracket-matches`);
+      return res.data;
+    },
+    enabled: !!selected?.id && clearedSelectedRegs.length > 0,
+    retry: false,
+    staleTime: 4_000,
+  });
 
   const { data: eligibility, isLoading: eligibilityLoading } = useQuery({
     queryKey: ["eligibility-options", selected?.id, gender, modality, birthYear],
@@ -411,8 +587,10 @@ export default function CompeticoesScreen() {
       const payload = {
         student_id: student.id,
         gender,
+        modality,
         age_division_id: ageDivisionId,
         weight_class_id: weightClassId,
+        also_absolute: alsoAbsolute,
       };
       const res = await api.post(`/api/competitions/${selected.id}/registrations`, payload);
       return res.data as RegistrationSummary;
@@ -420,7 +598,11 @@ export default function CompeticoesScreen() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["my-competition-registrations"] });
       setEnrollOpen(false);
-      Alert.alert("Inscrição realizada", "Você foi inscrito com sucesso neste evento.");
+      setAlsoAbsolute(false);
+      Alert.alert(
+        "Inscrição registrada",
+        "Se houver taxa, envie o comprovante e aguarde a confirmação do pagamento pelo organizador. Só após isso você estará inscrito de fato e poderá seguir no fluxo do evento.",
+      );
     },
     onError: (err: any) => {
       const detail =
@@ -590,8 +772,14 @@ export default function CompeticoesScreen() {
           renderItem={({ item }) => {
             const img = resolvePublicImage(item.banner_url);
             const dateLabel = fmtDate(item.event_starts_at);
-            const reg = regByCompetitionId.get(item.id);
-            const isRegistered = !!reg;
+            const regs = regByCompetitionId.get(item.id) ?? [];
+            const enrolledConfirmed =
+              regs.length > 0 && regs.every((r) => registrationPaymentCleared(r.payment_status));
+            const hasEnrollment = regs.length > 0;
+            const enrollmentPendingReview =
+              hasEnrollment &&
+              !enrolledConfirmed &&
+              regs.some((r) => String(r.payment_status).toLowerCase() === "pending_confirmation");
             return (
               <Pressable
                 onPress={() => {
@@ -639,7 +827,7 @@ export default function CompeticoesScreen() {
                       </View>
                     </View>
 
-                    {isRegistered ? (
+                    {enrolledConfirmed ? (
                       <View
                         style={{
                           flexDirection: "row",
@@ -655,6 +843,37 @@ export default function CompeticoesScreen() {
                       >
                         <CheckCircle2 size={14} color={tokens.color.primary} />
                         <Text style={{ color: tokens.color.primary, fontSize: 12, fontWeight: "800" }}>Inscrito</Text>
+                      </View>
+                    ) : hasEnrollment ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          backgroundColor: enrollmentPendingReview
+                            ? "rgba(59,130,246,0.12)"
+                            : "rgba(245,158,11,0.12)",
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderWidth: 1,
+                          borderColor: enrollmentPendingReview
+                            ? "rgba(59,130,246,0.22)"
+                            : "rgba(245,158,11,0.22)",
+                        }}
+                      >
+                        <Clock size={14} color={enrollmentPendingReview ? "rgba(59,130,246,0.98)" : "rgba(245,158,11,0.98)"} />
+                        <Text
+                          style={{
+                            color: enrollmentPendingReview ? "rgba(59,130,246,0.98)" : "rgba(245,158,11,0.98)",
+                            fontSize: 11,
+                            fontWeight: "800",
+                            maxWidth: 120,
+                          }}
+                          numberOfLines={2}
+                        >
+                          {enrollmentPendingReview ? "Em análise" : "Pagamento pendente"}
+                        </Text>
                       </View>
                     ) : (
                       <ChevronRight size={20} color={onCardMuted} />
@@ -697,7 +916,7 @@ export default function CompeticoesScreen() {
               {selected?.name ?? ""}
             </Text>
             <Text style={{ color: onCardMuted, marginTop: tokens.space.xs, fontSize: tokens.text.xs }}>
-              {fmtDate(selected?.event_starts_at ?? null) ?? `Ano ${selected?.reference_year ?? ""}`}
+              {fmtDateTime(selected?.event_starts_at ?? null) ?? `Ano ${selected?.reference_year ?? ""}`}
               {selected?.organizer_dojo_name ? ` · ${selected.organizer_dojo_name}` : ""}
             </Text>
           </View>
@@ -725,7 +944,92 @@ export default function CompeticoesScreen() {
 
             <View style={{ height: 14 }} />
 
-            {selectedReg ? (
+            {/* Detalhes do evento */}
+            <View
+              style={{
+                backgroundColor: tokens.color.bgCard,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: onCardSubtle,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: onCardText, fontWeight: "900" }}>
+                Sobre o evento
+              </Text>
+
+              <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
+                Data e hora: {fmtDateTime(selected?.event_starts_at ?? null) ?? "—"}
+              </Text>
+
+              {(selected?.description ?? "").trim() ? (
+                <Text style={{ color: onCardMuted, marginTop: 10, fontSize: 13, lineHeight: 18 }}>
+                  {(selected?.description ?? "").trim()}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Premiação (sempre visível no evento) */}
+            <View
+              style={{
+                backgroundColor: tokens.color.bgCard,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: onCardSubtle,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: onCardText, fontWeight: "900" }}>Premiação</Text>
+              {prizesLoading ? (
+                <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13 }}>Carregando…</Text>
+              ) : prizesIsError ? (
+                <Text style={{ color: tokens.color.error, marginTop: 6, fontSize: 13 }}>
+                  Erro ao carregar premiação:{" "}
+                  {(prizesError as any)?.response?.data?.detail ??
+                    (prizesError as any)?.message ??
+                    "Tente novamente."}
+                </Text>
+              ) : (prizes ?? []).length === 0 ? (
+                <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13 }}>
+                  Nenhuma premiação cadastrada.
+                </Text>
+              ) : (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {(prizes ?? [])
+                    .slice()
+                    .sort((a, b) => (a.place ?? 0) - (b.place ?? 0))
+                    .map((p) => (
+                      <View
+                        key={p.id}
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.10)",
+                          backgroundColor: "rgba(255,255,255,0.06)",
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: onCardText, fontWeight: "900", fontSize: 13 }}>
+                          {p.place}º — {p.reward}
+                        </Text>
+                        <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 2 }}>
+                          {fmtPrizeKindPt(p.kind)}
+                          {" · "}
+                          {fmtModalityPt(p.modality)}
+                          {" · "}
+                          {fmtGenderPt(p.gender)}
+                          {p.faixa_label ? ` · ${p.faixa_label}` : ""}
+                        </Text>
+                      </View>
+                    ))}
+                </View>
+              )}
+            </View>
+
+            {selectedRegs.length > 0 ? (
               <View
                 style={{
                   backgroundColor: tokens.color.bgCard,
@@ -736,11 +1040,29 @@ export default function CompeticoesScreen() {
                 }}
               >
                 <Text style={{ color: onCardText, fontWeight: "900" }}>
-                  Você já está inscrito
+                  {allRegsPaymentCleared ? "Você está inscrito" : "Inscrição em andamento"}
                 </Text>
-                <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
-                  Categoria: {selectedReg.age_division_label ?? "—"} · {selectedReg.weight_class_label ?? "—"}
-                </Text>
+                {!allRegsPaymentCleared ? (
+                  <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
+                    Você só estará inscrito de fato após a confirmação do pagamento pelo organizador. Até lá, pesagem e
+                    chave não entram no fluxo do evento.
+                  </Text>
+                ) : null}
+                {selected?.event_starts_at ? (
+                  <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
+                    Início: {fmtDateTime(selected.event_starts_at) ?? "—"}
+                  </Text>
+                ) : null}
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {selectedRegs.map((r) => (
+                    <Text key={r.id} style={{ color: onCardMuted, fontSize: 13, lineHeight: 18 }}>
+                      {r.kind === "absolute" ? "Absoluto" : "Categoria"}{r.modality ? ` (${r.modality === "nogi" ? "No-Gi" : "Gi"})` : ""}:{" "}
+                      {r.kind === "absolute"
+                        ? (r.weight_class_label ?? "—")
+                        : `${r.age_division_label ?? "—"} · ${r.weight_class_label ?? "—"}`}
+                    </Text>
+                  ))}
+                </View>
                 <View
                   style={{
                     marginTop: 8,
@@ -752,14 +1074,14 @@ export default function CompeticoesScreen() {
                 >
                   <Text style={{ color: onCardMuted, fontSize: 13 }}>Status:</Text>
                   {(() => {
-                    const st = mapRegistrationStatusPt(selectedReg.status);
+                    const st = mapRegistrationStatusPt(primaryReg?.status);
                     // Status fica simples (sem destaque). Mantemos destaque só no pagamento.
                     return <Text style={{ color: onCardText, fontWeight: "800", fontSize: 13 }}>{st.label}</Text>;
                   })()}
 
                   <Text style={{ color: onCardMuted, fontSize: 13 }}>Pagamento:</Text>
                   {(() => {
-                    const p = mapPaymentStatusPt(selectedReg.payment_status);
+                    const p = mapPaymentStatusPt(primaryReg?.payment_status);
                     return (
                       <View
                         style={{
@@ -778,19 +1100,19 @@ export default function CompeticoesScreen() {
                 </View>
 
                 {(() => {
-                  const fee = selectedReg.registration_fee_amount ?? selected?.registration_fee_amount ?? 0;
+                  const fee = primaryReg?.registration_fee_amount ?? selected?.registration_fee_amount ?? 0;
                   const hasFee = Number(fee) > 0;
                   if (!hasFee) return null;
-                  const ps = String(selectedReg.payment_status ?? "").toLowerCase();
+                  const ps = String(primaryReg?.payment_status ?? "").toLowerCase();
                   const canAttach = ps === "pending_payment" || ps === "rejected";
                   const inReview = ps === "pending_confirmation";
-                  const receipt = receiptUrl(selectedReg.payment_receipt_path ?? null);
-                  const isUploading = uploadingRegId === selectedReg.id || uploadRegReceiptMutation.isPending;
+                  const receipt = receiptUrl(primaryReg?.payment_receipt_path ?? null);
+                  const isUploading = uploadingRegId === primaryReg?.id || uploadRegReceiptMutation.isPending;
                   return (
                     <View style={{ marginTop: 12 }}>
-                      {selectedReg.registration_payment_instructions ? (
+                      {primaryReg?.registration_payment_instructions ? (
                         <Text style={{ color: onCardMuted, fontSize: 13, lineHeight: 18 }}>
-                          {selectedReg.registration_payment_instructions}
+                          {primaryReg.registration_payment_instructions}
                         </Text>
                       ) : null}
 
@@ -825,7 +1147,8 @@ export default function CompeticoesScreen() {
                           disabled={isUploading}
                           onPress={() => {
                             if (!selected?.id) return;
-                            handleAttachRegistrationReceipt(selected.id, selectedReg.id);
+                            if (!primaryReg?.id) return;
+                            handleAttachRegistrationReceipt(selected.id, primaryReg.id);
                           }}
                           style={{
                             marginTop: 10,
@@ -850,6 +1173,140 @@ export default function CompeticoesScreen() {
                     </View>
                   );
                 })()}
+
+                <View style={{ marginTop: 14, height: 1, backgroundColor: "rgba(255,255,255,0.10)" }} />
+
+                <View style={{ marginTop: 12 }}>
+                  <Text style={{ color: onCardText, fontWeight: "900" }}>Sua chave</Text>
+                  {clearedSelectedRegs.length === 0 ? (
+                    <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13, lineHeight: 18 }}>
+                      Disponível após a confirmação do pagamento. Envie o comprovante (se houver taxa) e aguarde o
+                      organizador.
+                    </Text>
+                  ) : initialMatchLoading || myBracketMatchesLoading ? (
+                    <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13 }}>Carregando…</Text>
+                  ) : (myBracketMatches ?? []).length === 0 && !myInitialMatch ? (
+                    <Text style={{ color: onCardMuted, marginTop: 6, fontSize: 13 }}>
+                      Chave ainda não gerada para sua categoria.
+                    </Text>
+                  ) : (
+                    <View style={{ marginTop: 8, gap: 8 }}>
+                      {(myBracketMatches ?? []).map((mm) => {
+                        const totalRounds = (myBracketMatches ?? []).reduce((acc, x) => Math.max(acc, (x.round_index ?? 0) + 1), 1);
+                        const stageLabel = bracketStageLabelFromTotalRounds(mm.round_index, totalRounds);
+                        const resultLabel =
+                          mm.my_result === "pending"
+                            ? "Pendente"
+                            : mm.my_result === "win"
+                              ? "Vitória"
+                              : mm.my_result === "loss"
+                                ? "Derrota"
+                                : mm.my_result === "draw"
+                                  ? "Empate"
+                                  : mm.my_result;
+
+                        return (
+                          <View
+                            key={mm.match_id}
+                            style={{
+                              borderRadius: 14,
+                              borderWidth: 1,
+                              borderColor: "rgba(184,158,93,0.28)",
+                              backgroundColor: "rgba(184,158,93,0.10)",
+                              paddingVertical: 10,
+                              paddingHorizontal: 12,
+                            }}
+                          >
+                            <Text style={{ color: onCardText, fontWeight: "900", fontSize: 13 }}>
+                              {stageLabel} · Oponente: {mm.opponent_name ?? "A definir"}
+                            </Text>
+                            <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                              Lado: {mm.my_side === "red" ? "Vermelho" : mm.my_side === "blue" ? "Azul" : mm.my_side}
+                              {" · "}
+                              Status: {mm.match_status}
+                            </Text>
+                            <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                              Resultado:{" "}
+                              <Text
+                                style={{
+                                  fontWeight: "900",
+                                  color:
+                                    mm.my_result === "win"
+                                      ? "#22c55e"
+                                      : mm.my_result === "loss"
+                                        ? "#ef4444"
+                                        : mm.my_result === "draw"
+                                          ? "#f59e0b"
+                                          : onCardMuted,
+                                }}
+                              >
+                                {resultLabel}
+                              </Text>{" "}
+                              · Placar: {mm.red_score}×{mm.blue_score}
+                            </Text>
+                            <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                              {mm.mat_name ? `Tatame: ${mm.mat_name}` : "Tatame: —"}
+                              {" · "}
+                              {mm.queue_order != null ? `Ordem: ${mm.queue_order}` : "Ordem: —"}
+                            </Text>
+                            <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                              Início previsto: {fmtDateTime(mm.estimated_start_at) ?? "—"}
+                            </Text>
+                          </View>
+                        );
+                      })}
+
+                      {(myBracketMatches ?? []).length === 0 && myInitialMatch ? (
+                        <View
+                          style={{
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            borderColor: "rgba(184,158,93,0.28)",
+                            backgroundColor: "rgba(184,158,93,0.10)",
+                            paddingVertical: 10,
+                            paddingHorizontal: 12,
+                          }}
+                        >
+                          <Text style={{ color: onCardText, fontWeight: "900", fontSize: 13 }}>
+                            Oponente: {myInitialMatch.opponent_name ?? "A definir"}
+                          </Text>
+                          <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                            Lado:{" "}
+                            {myInitialMatch.my_side === "red"
+                              ? "Vermelho"
+                              : myInitialMatch.my_side === "blue"
+                                ? "Azul"
+                                : myInitialMatch.my_side}
+                            {" · "}
+                            Status: {myInitialMatch.match_status}
+                          </Text>
+                          <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                            Resultado:{" "}
+                            {myInitialMatch.my_result === "pending"
+                              ? "Pendente"
+                              : myInitialMatch.my_result === "win"
+                                ? "Vitória"
+                                : myInitialMatch.my_result === "loss"
+                                  ? "Derrota"
+                                  : myInitialMatch.my_result === "draw"
+                                    ? "Empate"
+                                    : myInitialMatch.my_result}
+                            {" · "}
+                            Placar: {myInitialMatch.red_score}×{myInitialMatch.blue_score}
+                          </Text>
+                          <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                            {myInitialMatch.mat_name ? `Tatame: ${myInitialMatch.mat_name}` : "Tatame: —"}
+                            {" · "}
+                            {myInitialMatch.queue_order != null ? `Ordem: ${myInitialMatch.queue_order}` : "Ordem: —"}
+                          </Text>
+                          <Text style={{ color: onCardMuted, fontSize: 12, marginTop: 4 }}>
+                            Início previsto: {fmtDateTime(myInitialMatch.estimated_start_at) ?? "—"}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  )}
+                </View>
               </View>
             ) : (
               <View
@@ -886,6 +1343,7 @@ export default function CompeticoesScreen() {
                     setEnrollOpen(true);
                     setAgeDivisionId(null);
                     setWeightClassId(null);
+                    setAlsoAbsolute(false);
                   }}
                   style={{
                     backgroundColor: tokens.color.primary,
@@ -905,7 +1363,7 @@ export default function CompeticoesScreen() {
               </View>
             )}
 
-            {enrollOpen && !selectedReg ? (
+            {enrollOpen && selectedRegs.length === 0 ? (
               <View style={{ marginTop: 14 }}>
                 <View
                   style={{
@@ -982,8 +1440,10 @@ export default function CompeticoesScreen() {
                     <ActivityIndicator color={tokens.color.primary} />
                   ) : (
                     <>
-                      <Text style={{ color: tokens.color.textPrimary, fontWeight: "800" }}>Categoria (idade)</Text>
-                      <View style={{ marginTop: 8, gap: 8 }}>
+                      <Text style={{ color: tokens.color.textPrimary, fontWeight: "900", fontSize: 14, letterSpacing: 0.2 }}>
+                        Categoria (idade)
+                      </Text>
+                      <View style={{ marginTop: 10, gap: 10 }}>
                         {(eligibility?.age_divisions ?? []).map((opt) => (
                           <Pressable
                             key={opt.age_division.id}
@@ -992,21 +1452,26 @@ export default function CompeticoesScreen() {
                               setWeightClassId(null);
                             }}
                             style={{
-                              borderRadius: 12,
-                              paddingVertical: 10,
-                              paddingHorizontal: 12,
+                              borderRadius: 16,
+                              paddingVertical: 12,
+                              paddingHorizontal: 14,
                               borderWidth: 1,
                               borderColor:
                                 ageDivisionId === opt.age_division.id
-                                  ? "rgba(184,158,93,0.5)"
+                                  ? "rgba(184,158,93,0.75)"
                                   : tokens.color.borderSubtle,
                               backgroundColor:
                                 ageDivisionId === opt.age_division.id
-                                  ? "rgba(184,158,93,0.12)"
-                                  : tokens.color.bgBody,
+                                  ? "rgba(184,158,93,0.16)"
+                                  : "rgba(255,255,255,0.03)",
+                              shadowColor: "rgba(0,0,0,0.6)",
+                              shadowOpacity: ageDivisionId === opt.age_division.id ? 0.22 : 0.12,
+                              shadowRadius: ageDivisionId === opt.age_division.id ? 16 : 10,
+                              shadowOffset: { width: 0, height: 6 },
+                              elevation: ageDivisionId === opt.age_division.id ? 6 : 3,
                             }}
                           >
-                            <Text style={{ color: tokens.color.textPrimary, fontWeight: "900" }}>
+                            <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.1 }}>
                               {opt.age_division.label}
                             </Text>
                           </Pressable>
@@ -1018,10 +1483,12 @@ export default function CompeticoesScreen() {
                         ) : null}
                       </View>
 
-                      <View style={{ height: 12 }} />
+                      <View style={{ height: 16 }} />
 
-                      <Text style={{ color: tokens.color.textPrimary, fontWeight: "800" }}>Categoria (peso)</Text>
-                      <View style={{ marginTop: 8, gap: 8 }}>
+                      <Text style={{ color: tokens.color.textPrimary, fontWeight: "900", fontSize: 14, letterSpacing: 0.2 }}>
+                        Categoria (peso)
+                      </Text>
+                      <View style={{ marginTop: 10, gap: 10 }}>
                         {(eligibility?.weight_classes ?? [])
                           .filter((w) => (ageDivisionId ? w.weight_class.age_division_id === ageDivisionId : true))
                           .map((w) => (
@@ -1029,29 +1496,82 @@ export default function CompeticoesScreen() {
                               key={w.weight_class.id}
                               onPress={() => setWeightClassId(w.weight_class.id)}
                               style={{
-                                borderRadius: 12,
-                                paddingVertical: 10,
-                                paddingHorizontal: 12,
+                                borderRadius: 16,
+                                paddingVertical: 12,
+                                paddingHorizontal: 14,
                                 borderWidth: 1,
                                 borderColor:
                                   weightClassId === w.weight_class.id
-                                    ? "rgba(184,158,93,0.5)"
+                                    ? "rgba(184,158,93,0.75)"
                                     : tokens.color.borderSubtle,
                                 backgroundColor:
                                   weightClassId === w.weight_class.id
-                                    ? "rgba(184,158,93,0.12)"
-                                    : tokens.color.bgBody,
+                                    ? "rgba(184,158,93,0.16)"
+                                    : "rgba(255,255,255,0.03)",
+                                shadowColor: "rgba(0,0,0,0.6)",
+                                shadowOpacity: weightClassId === w.weight_class.id ? 0.22 : 0.12,
+                                shadowRadius: weightClassId === w.weight_class.id ? 16 : 10,
+                                shadowOffset: { width: 0, height: 6 },
+                                elevation: weightClassId === w.weight_class.id ? 6 : 3,
                               }}
                             >
-                              <Text style={{ color: tokens.color.textPrimary, fontWeight: "900" }}>
+                              <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.1 }}>
                                 {w.weight_class.weight_interval_label ?? w.weight_class.label}
                               </Text>
-                              <Text style={{ color: tokens.color.textMuted, fontSize: 12, marginTop: 2 }}>
+                              <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12.5, marginTop: 3, lineHeight: 16 }}>
                                 {w.weight_class.label}
                               </Text>
                             </Pressable>
                           ))}
                       </View>
+
+                      <View style={{ height: 16 }} />
+
+                      <Pressable
+                        onPress={() => setAlsoAbsolute((v) => !v)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 12,
+                          marginTop: 2,
+                          paddingVertical: 12,
+                          paddingHorizontal: 12,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: alsoAbsolute ? "rgba(184,158,93,0.75)" : tokens.color.borderSubtle,
+                          backgroundColor: alsoAbsolute ? "rgba(184,158,93,0.14)" : "rgba(255,255,255,0.02)",
+                          shadowColor: "rgba(0,0,0,0.6)",
+                          shadowOpacity: alsoAbsolute ? 0.18 : 0.1,
+                          shadowRadius: alsoAbsolute ? 14 : 10,
+                          shadowOffset: { width: 0, height: 6 },
+                          elevation: alsoAbsolute ? 5 : 3,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 8,
+                            borderWidth: 2,
+                            borderColor: alsoAbsolute ? tokens.color.primary : tokens.color.borderSubtle,
+                            backgroundColor: alsoAbsolute ? "rgba(184,158,93,0.18)" : "transparent",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {alsoAbsolute ? (
+                            <Text style={{ color: tokens.color.primary, fontWeight: "900", marginTop: -1 }}>✓</Text>
+                          ) : null}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 14.5, letterSpacing: 0.1 }}>
+                            Participar do absoluto da faixa
+                          </Text>
+                          <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12.5, marginTop: 3, lineHeight: 16 }}>
+                            Inscrição adicional (sem idade/peso) na modalidade selecionada.
+                          </Text>
+                        </View>
+                      </Pressable>
 
                       <View style={{ height: 14 }} />
 
@@ -1060,13 +1580,18 @@ export default function CompeticoesScreen() {
                         onPress={() => enrollMutation.mutate()}
                         style={{
                           backgroundColor: tokens.color.primary,
-                          borderRadius: 14,
-                          paddingVertical: 12,
+                          borderRadius: 16,
+                          paddingVertical: 14,
                           alignItems: "center",
                           opacity: enrollMutation.isPending ? 0.85 : 1,
+                          shadowColor: "rgba(0,0,0,0.7)",
+                          shadowOpacity: 0.22,
+                          shadowRadius: 18,
+                          shadowOffset: { width: 0, height: 10 },
+                          elevation: 8,
                         }}
                       >
-                        <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "900" }}>
+                        <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.2 }}>
                           {enrollMutation.isPending ? "Inscrevendo…" : "Confirmar inscrição"}
                         </Text>
                       </Pressable>

@@ -7,6 +7,8 @@ class MuralPostBase(BaseModel):
     title: str
     content: str
     pinned: bool = False
+    # Lista de nomes de modalidades alvo. None = legado/global (admin antigo).
+    modalidades: list[str] | None = None
 
 
 class MuralPostCreate(MuralPostBase):
@@ -17,6 +19,7 @@ class MuralPostUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     pinned: bool | None = None
+    modalidades: list[str] | None = None
 
 
 class MuralPostRead(MuralPostBase):
@@ -46,4 +49,12 @@ class MuralLikerRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MuralUnreadCount(BaseModel):
+    unread_count: int
+
+
+class MuralSeenState(BaseModel):
+    last_seen_at: datetime
 
