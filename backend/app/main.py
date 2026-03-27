@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+import logging
 
 from app.core.config import get_settings
 from app.core.database import init_models
@@ -21,10 +22,12 @@ from app.modules.skills.routes import router as skills_router
 from app.modules.matriculas.routes import router as matriculas_router
 from app.modules.modalidades.routes import router as modalidades_router
 from app.modules.competitions.routes import router as competitions_router
+from app.modules.seminars.routes import router as seminars_router
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    log = logging.getLogger("arenamaster")
 
     app = FastAPI(
         title="Arena Master API",
@@ -73,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(matriculas_router, prefix="/api/matriculas", tags=["matriculas"])
     app.include_router(competitions_router, prefix="/api/competitions", tags=["competitions"])
     app.include_router(modalidades_router, prefix="/api/modalidades", tags=["modalidades"])
+    app.include_router(seminars_router, prefix="/api/seminars", tags=["seminars"])
 
     # Diretório de arquivos estáticos (inclui comprovantes em static/receipts e logos de dojos)
     # Usamos o diretório "static" dentro de backend/, compartilhado entre os módulos Python.
@@ -89,6 +93,18 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def on_startup() -> None:
+        # Loga conexão efetiva para depuração (evita vazar senha)
+        try:
+            url = str(settings.database_url or "")
+            masked = url
+            if "://" in url and "@" in url:
+                scheme, rest = url.split("://", 1)
+                creds, host = rest.split("@", 1)
+                user = creds.split(":", 1)[0] if ":" in creds else creds
+                masked = f"{scheme}://{user}:***@{host}"
+            log.warning("DATABASE_URL efetiva: %s", masked)
+        except Exception:
+            pass
         # Em desenvolvimento, garante que novas tabelas (como as de finanças)
         # sejam criadas automaticamente se ainda não existirem.
         await init_models()

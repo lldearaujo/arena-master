@@ -268,6 +268,30 @@ export function AppShell({ children }: AppShellProps) {
               Competições
             </Link>
           )}
+          {(user?.role === "admin" || user?.role === "superadmin") && (
+            <Link
+              to="/seminarios"
+              style={{
+                ...navLinkStyle,
+                backgroundColor: isActivePath(location.pathname, "/seminarios")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent",
+                borderLeft: isActivePath(location.pathname, "/seminarios")
+                  ? `3px solid ${tokens.color.primary}`
+                  : "3px solid transparent",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = isActivePath(location.pathname, "/seminarios")
+                  ? "rgba(255,255,255,0.12)"
+                  : "transparent";
+              }}
+            >
+              Seminários
+            </Link>
+          )}
           {user?.role === "aluno" && (
             <Link
               to="/configuracoes"

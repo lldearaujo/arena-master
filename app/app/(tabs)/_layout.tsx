@@ -1,4 +1,4 @@
-import { CalendarDays, Receipt, ScrollText, SquareCheckBig, User } from "lucide-react-native";
+import { BookOpen, CalendarDays, Receipt, ScrollText, SquareCheckBig, Trophy, User } from "lucide-react-native";
 import { Tabs } from "expo-router";
 import { Redirect } from "expo-router";
 import { useEffect } from "react";
@@ -14,7 +14,9 @@ const TAB_ICONS = {
   mural: ScrollText,
   index: SquareCheckBig,
   financeiro: Receipt,
-  competicoes: CalendarDays,
+  eventos: CalendarDays,
+  competicoes: Trophy,
+  seminarios: BookOpen,
   perfil: User,
 } as const;
 
@@ -123,12 +125,34 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="competicoes"
+        name="eventos"
         options={{
           title: "Eventos",
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
+            <TabIcon routeName="eventos" focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="competicoes"
+        options={{
+          href: null,
+          title: "Competições",
+          headerShown: false,
+          tabBarIcon: ({ focused, color }) => (
             <TabIcon routeName="competicoes" focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="seminarios"
+        options={{
+          href: null,
+          title: "Seminários",
+          headerShown: false,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon routeName="seminarios" focused={focused} color={color} />
           ),
         }}
       />

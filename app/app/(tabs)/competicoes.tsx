@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, CheckCircle2, ChevronRight, Clock, Search, Ticket } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -151,6 +152,9 @@ function bracketStageLabelFromTotalRounds(roundIndex: number, totalRounds: numbe
 }
 
 export default function CompeticoesScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string; from?: string }>();
+  const didAutoOpenFromParamsRef = useRef(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const qc = useQueryClient();
@@ -158,6 +162,16 @@ export default function CompeticoesScreen() {
   const onCardText = tokens.color.textOnPrimary;
   const onCardMuted = "rgba(255,255,255,0.72)";
   const onCardSubtle = "rgba(255,255,255,0.16)";
+  const cameFromEventos = params?.from === "eventos";
+
+  function goBackFromEventos() {
+    router.replace("/(tabs)/eventos");
+  }
+
+  function handleBackFromDetails() {
+    setSelected(null);
+    if (cameFromEventos) goBackFromEventos();
+  }
 
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<CompetitionRead | null>(null);
@@ -682,6 +696,24 @@ export default function CompeticoesScreen() {
 
   const cardW = Math.min(520, width - 40);
 
+  // Deep-link vindo de "Eventos": abre diretamente o modal do item.
+  useEffect(() => {
+    if (didAutoOpenFromParamsRef.current) return;
+    const raw = params?.id;
+    if (!raw) return;
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id <= 0) return;
+    if (!comps?.length) return;
+    const found = comps.find((c) => c.id === id) ?? null;
+    if (found) {
+      setSelected(found);
+      setEnrollOpen(false);
+      setAgeDivisionId(null);
+      setWeightClassId(null);
+      didAutoOpenFromParamsRef.current = true;
+    }
+  }, [params?.id, comps]);
+
   return (
     <View style={{ flex: 1, backgroundColor: tokens.color.bgBody }}>
       <View
@@ -702,6 +734,17 @@ export default function CompeticoesScreen() {
           alignItems: "center",
         }}
       >
+        {params?.from === "eventos" ? (
+          <Pressable
+            onPress={() => {
+              setSelected(null);
+              goBackFromEventos();
+            }}
+            style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 2 }}
+          >
+            <Text style={{ color: tokens.color.primary, fontWeight: "900" }}>Voltar</Text>
+          </Pressable>
+        ) : null}
         <Image
           source={arenaMasterLogo}
           style={{
@@ -889,7 +932,7 @@ export default function CompeticoesScreen() {
       <Modal
         visible={!!selected}
         animationType="slide"
-        onRequestClose={() => setSelected(null)}
+        onRequestClose={handleBackFromDetails}
       >
         <View style={{ flex: 1, backgroundColor: tokens.color.bgBody }}>
           <View
@@ -909,7 +952,7 @@ export default function CompeticoesScreen() {
               borderBottomColor: "rgba(255,255,255,0.06)",
             }}
           >
-            <Pressable onPress={() => setSelected(null)} style={{ paddingVertical: 10, alignSelf: "flex-start" }}>
+            <Pressable onPress={handleBackFromDetails} style={{ paddingVertical: 10, alignSelf: "flex-start" }}>
               <Text style={{ color: tokens.color.primary, fontWeight: "900" }}>Voltar</Text>
             </Pressable>
             <Text style={{ fontSize: tokens.text.lg, fontWeight: "900", color: onCardText }} numberOfLines={2}>
@@ -1471,7 +1514,7 @@ export default function CompeticoesScreen() {
                               elevation: ageDivisionId === opt.age_division.id ? 6 : 3,
                             }}
                           >
-                            <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.1 }}>
+                            <Text style={{ color: tokens.color.textPrimary, fontWeight: "900", fontSize: 15, letterSpacing: 0.1 }}>
                               {opt.age_division.label}
                             </Text>
                           </Pressable>
@@ -1515,7 +1558,7 @@ export default function CompeticoesScreen() {
                                 elevation: weightClassId === w.weight_class.id ? 6 : 3,
                               }}
                             >
-                              <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.1 }}>
+                              <Text style={{ color: tokens.color.textPrimary, fontWeight: "900", fontSize: 15, letterSpacing: 0.1 }}>
                                 {w.weight_class.weight_interval_label ?? w.weight_class.label}
                               </Text>
                               <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12.5, marginTop: 3, lineHeight: 16 }}>
@@ -1564,7 +1607,7 @@ export default function CompeticoesScreen() {
                           ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: tokens.color.textPrimary, fontWeight: "950", fontSize: 14.5, letterSpacing: 0.1 }}>
+                          <Text style={{ color: tokens.color.textPrimary, fontWeight: "900", fontSize: 14.5, letterSpacing: 0.1 }}>
                             Participar do absoluto da faixa
                           </Text>
                           <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12.5, marginTop: 3, lineHeight: 16 }}>
@@ -1591,7 +1634,7 @@ export default function CompeticoesScreen() {
                           elevation: 8,
                         }}
                       >
-                        <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "950", fontSize: 15, letterSpacing: 0.2 }}>
+                        <Text style={{ color: tokens.color.textOnPrimary, fontWeight: "900", fontSize: 15, letterSpacing: 0.2 }}>
                           {enrollMutation.isPending ? "Inscrevendo…" : "Confirmar inscrição"}
                         </Text>
                       </Pressable>

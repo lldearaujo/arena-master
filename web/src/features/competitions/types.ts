@@ -40,6 +40,7 @@ export type Competition = {
   transition_buffer_seconds: number;
   public_display_token: string;
   is_published: boolean;
+  visibility?: "internal" | "public";
   created_at: string;
   federation_preset_code?: string | null;
   banner_url?: string | null;

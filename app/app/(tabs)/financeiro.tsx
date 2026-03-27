@@ -205,6 +205,9 @@ export default function FinanceiroScreen() {
   const active = data?.active_subscription;
   const payments = data?.payments ?? [];
   const nextInvoice = payments.find((p) => p.status === "pending_confirmation");
+  const paymentsList = nextInvoice
+    ? payments.filter((p) => p.id !== nextInvoice.id)
+    : payments;
 
   // Cores dinâmicas para o card do plano atual
   let planoBgColor = "#d4af37";
@@ -794,7 +797,7 @@ export default function FinanceiroScreen() {
           </View>
         )}
 
-        {data?.payments?.length ? (
+        {paymentsList.length ? (
           <View
             style={{
               backgroundColor: tokens.color.bgCard,
@@ -814,7 +817,7 @@ export default function FinanceiroScreen() {
             >
               Pagamentos
             </Text>
-            {data.payments.map((p) => {
+            {paymentsList.map((p) => {
               const isPendingReceipt = p.status === "pending_confirmation";
               const paymentDate = new Date(
                 (p.payment_date ?? p.created_at) as string,

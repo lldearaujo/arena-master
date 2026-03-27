@@ -320,9 +320,15 @@ async def list_competitions(session: AsyncSession, user: User) -> list[Competiti
             if s:
                 allowed_cf.add(s.casefold())
 
+        vis_clause = Competition.visibility == "public"
+        if user.dojo_id is not None:
+            vis_clause = or_(Competition.visibility == "public", Competition.organizer_dojo_id == user.dojo_id)
+
         r = await session.execute(
             select(Competition)
             .where(Competition.is_published.is_(True))
+            .where(vis_clause)
+            .where(Competition.event_modality.is_not(None))
             .order_by(Competition.reference_year.desc(), Competition.created_at.desc())
         )
         all_rows = list(r.scalars().all())
@@ -366,6 +372,8 @@ async def list_prizes(
 async def list_public_prizes(session: AsyncSession, competition_id: int) -> list[schemas.PublicCompetitionPrizeRead]:
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
         raise HTTPException(status_code=404, detail="Competição não encontrada")
     r = await session.execute(
         select(CompetitionPrize, Faixa.name)
@@ -411,6 +419,9 @@ async def get_my_initial_match(
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
         raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
+        if user.dojo_id is None or user.dojo_id != comp.organizer_dojo_id:
+            raise HTTPException(status_code=404, detail="Competição não encontrada")
 
     # acha Student do usuário
     r_st = await session.execute(select(Student).where(Student.user_id == user.id))
@@ -526,6 +537,9 @@ async def get_my_bracket_matches(
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
         raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
+        if user.dojo_id is None or user.dojo_id != comp.organizer_dojo_id:
+            raise HTTPException(status_code=404, detail="Competição não encontrada")
 
     r_st = await session.execute(select(Student).where(Student.user_id == user.id))
     st = r_st.scalar_one_or_none()
@@ -875,6 +889,7 @@ async def create_competition(session: AsyncSession, user: User, payload: schemas
         default_match_duration_seconds=payload.default_match_duration_seconds,
         transition_buffer_seconds=payload.transition_buffer_seconds,
         is_published=payload.is_published,
+        visibility=getattr(payload, "visibility", "internal") or "internal",
         registration_fee_amount=payload.registration_fee_amount,
         registration_payment_instructions=payload.registration_payment_instructions,
         event_modality=em,
@@ -916,6 +931,9 @@ async def get_competition(session: AsyncSession, user: User, competition_id: int
     if user.role == "aluno":
         if not comp.is_published:
             raise HTTPException(status_code=404, detail="Competição não encontrada")
+        if getattr(comp, "visibility", "internal") != "public":
+            if user.dojo_id is None or user.dojo_id != comp.organizer_dojo_id:
+                raise HTTPException(status_code=404, detail="Competição não encontrada")
         return comp
     if user.role == "admin" and user.dojo_id == comp.organizer_dojo_id:
         return comp
@@ -1320,6 +1338,8 @@ async def get_public_competition_summary(
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
         raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
     return await competition_read_with_organizer(session, comp)
 
 
@@ -1332,6 +1352,8 @@ async def get_public_eligibility_options(
 ) -> schemas.EligibilityOptionsResponse:
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
         raise HTTPException(status_code=404, detail="Competição não encontrada")
 
     r_ad = await session.execute(
@@ -1468,6 +1490,9 @@ async def create_registration(
     if user.role == "aluno":
         if not comp.is_published:
             raise HTTPException(status_code=404, detail="Competição não encontrada")
+        if getattr(comp, "visibility", "internal") != "public":
+            if user.dojo_id is None or user.dojo_id != comp.organizer_dojo_id:
+                raise HTTPException(status_code=404, detail="Competição não encontrada")
     else:
         _assert_organizer(comp, user)
 
@@ -1739,6 +1764,8 @@ async def register_public_competition(
 ) -> tuple[CompetitionRegistration, User]:
     comp = await _get_competition(session, competition_id)
     if comp is None or not comp.is_published:
+        raise HTTPException(status_code=404, detail="Competição não encontrada")
+    if getattr(comp, "visibility", "internal") != "public":
         raise HTTPException(status_code=404, detail="Competição não encontrada")
 
     existing_u = await session.execute(select(User).where(User.email == payload.email))
@@ -2658,7 +2685,7 @@ async def _match_names(session: AsyncSession, m: CompetitionMatch) -> tuple[str 
 async def public_mat_statuses(session: AsyncSession, public_token: str) -> list[schemas.PublicMatStatus]:
     r = await session.execute(select(Competition).where(Competition.public_display_token == public_token))
     comp = r.scalar_one_or_none()
-    if comp is None:
+    if comp is None or not comp.is_published or getattr(comp, "visibility", "internal") != "public":
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
     r_mats = await session.execute(

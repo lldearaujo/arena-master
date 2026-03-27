@@ -25,6 +25,10 @@ import { CompetitionEnrollPage } from "./features/competitions/CompetitionEnroll
 import { PublicCompetitionEnrollPage } from "./features/competitions/PublicCompetitionEnrollPage";
 import { ScorekeeperPage } from "./features/competitions/ScorekeeperPage";
 import { PublicMatsPage } from "./features/competitions/PublicMatsPage";
+import { SeminarsListPage } from "./features/seminars/SeminarsListPage";
+import { SeminarManagePage } from "./features/seminars/SeminarManagePage";
+import { SeminarCheckInPage } from "./features/seminars/SeminarCheckInPage";
+import { PublicSeminarEnrollPage } from "./features/seminars/PublicSeminarEnrollPage";
 
 type PrivateRouteProps = {
   children: JSX.Element;
@@ -93,6 +97,7 @@ export function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
       <Route path="/competicao-ao-vivo/:token" element={<PublicMatsPage />} />
       <Route path="/competicao/inscricao/:id" element={<PublicCompetitionEnrollPage />} />
+      <Route path="/seminario/inscricao/:id" element={<PublicSeminarEnrollPage />} />
       <Route
         path="/dashboard"
         element={
@@ -186,6 +191,30 @@ export function App() {
         element={
           <PrivateRoute allowedRoles={["admin", "superadmin"]}>
             <CompetitionManagePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/seminarios"
+        element={
+          <PrivateRoute allowedRoles={["admin", "superadmin"]}>
+            <SeminarsListPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/seminarios/gerir/:id"
+        element={
+          <PrivateRoute allowedRoles={["admin", "superadmin"]}>
+            <SeminarManagePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/seminarios/checkin/:id"
+        element={
+          <PrivateRoute allowedRoles={["admin", "superadmin"]}>
+            <SeminarCheckInPage />
           </PrivateRoute>
         }
       />

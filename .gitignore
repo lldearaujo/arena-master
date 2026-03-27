@@ -43,4 +43,8 @@ Desktop.ini
 # Uploads locais (não versionar)
 static/receipts/
 backend/static/receipts/
+static/seminar-banners/
+static/competition-banners/
+static/uploads/
+backend/static/uploads/
 

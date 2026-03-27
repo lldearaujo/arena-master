@@ -14,6 +14,7 @@ class CompetitionCreate(BaseModel):
     default_match_duration_seconds: int = 360
     transition_buffer_seconds: int = 90
     is_published: bool = False
+    visibility: str = Field(default="internal", pattern="^(internal|public)$")
     registration_fee_amount: float | None = Field(default=None, ge=0)
     registration_fee_amount_1: float | None = Field(default=None, ge=0)
     registration_fee_amount_2: float | None = Field(default=None, ge=0)
@@ -31,6 +32,7 @@ class CompetitionUpdate(BaseModel):
     default_match_duration_seconds: int | None = None
     transition_buffer_seconds: int | None = None
     is_published: bool | None = None
+    visibility: str | None = Field(default=None, pattern="^(internal|public)$")
     registration_fee_amount: float | None = Field(default=None, ge=0)
     registration_fee_amount_1: float | None = Field(default=None, ge=0)
     registration_fee_amount_2: float | None = Field(default=None, ge=0)
@@ -51,6 +53,7 @@ class CompetitionRead(BaseModel):
     transition_buffer_seconds: int
     public_display_token: str
     is_published: bool
+    visibility: str = "internal"
     created_at: datetime
     federation_preset_code: str | None = None
     registration_fee_amount: float | None = None

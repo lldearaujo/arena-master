@@ -38,6 +38,8 @@ class Competition(Base):
         String(36), unique=True, index=True, default=lambda: str(uuid.uuid4())
     )
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    # internal: visível só para alunos do dojo organizador; public: visível para todos os usuários.
+    visibility: Mapped[str] = mapped_column(String(16), default="internal", index=True)
     # Código do preset de federação aplicado (libera regras de pontuação/placar na UI).
     federation_preset_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Valor da inscrição (None ou 0 = sem cobrança; confirmação automática).

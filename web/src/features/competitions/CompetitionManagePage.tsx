@@ -856,6 +856,18 @@ export function CompetitionManagePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["competition", competitionId] }),
   });
 
+  const [visibilityDraft, setVisibilityDraft] = useState<"" | "internal" | "public">("");
+  const visibilityMut = useMutation({
+    mutationFn: async () => {
+      if (!visibilityDraft) return;
+      await api.patch(`/api/competitions/${competitionId}`, { visibility: visibilityDraft });
+    },
+    onSuccess: () => {
+      setVisibilityDraft("");
+      qc.invalidateQueries({ queryKey: ["competition", competitionId] });
+    },
+  });
+
   const applyPresetMut = useMutation({
     mutationFn: async (code: string) => {
       const res = await api.post<ApplyFederationPresetResponse>(
@@ -1300,6 +1312,53 @@ export function CompetitionManagePage() {
       >
         {comp?.is_published ? "Despublicar" : "Publicar"} competição
       </button>
+
+      <div
+        style={{
+          marginBottom: 24,
+          padding: 14,
+          borderRadius: tokens.radius.md,
+          border: `1px solid ${tokens.color.borderSubtle}`,
+          backgroundColor: "white",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          alignItems: "center",
+        }}
+      >
+        <div style={{ minWidth: 180 }}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Visibilidade</div>
+          <select
+            value={visibilityDraft}
+            onChange={(e) => setVisibilityDraft(e.target.value as any)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${tokens.color.borderSubtle}` }}
+          >
+            <option value="">{comp?.visibility === "public" ? "Público" : "Interno"}</option>
+            <option value="internal">Interno (apenas alunos do dojô)</option>
+            <option value="public">Público (todos os usuários)</option>
+          </select>
+        </div>
+        <div style={{ flex: 1, minWidth: 220, color: tokens.color.textMuted, fontSize: 13, lineHeight: 1.45 }}>
+          Público aparece para todos os alunos (independente do dojô). Interno aparece apenas para alunos do dojô organizador.
+        </div>
+        <button
+          type="button"
+          onClick={() => visibilityMut.mutate()}
+          disabled={visibilityMut.isPending || !visibilityDraft}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 10,
+            border: "none",
+            cursor: visibilityMut.isPending || !visibilityDraft ? "not-allowed" : "pointer",
+            fontWeight: 800,
+            backgroundColor: tokens.color.primary,
+            color: "white",
+            opacity: visibilityMut.isPending || !visibilityDraft ? 0.75 : 1,
+          }}
+        >
+          {visibilityMut.isPending ? "Salvando..." : "Salvar visibilidade"}
+        </button>
+      </div>
 
       <div
         style={{

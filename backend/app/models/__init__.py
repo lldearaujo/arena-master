@@ -30,5 +30,12 @@ from app.models.competition import (  # noqa: F401
     CompetitionAward,
     NotificationOutbox,
 )
+from app.models.seminar import (  # noqa: F401
+    Seminar,
+    SeminarAttendance,
+    SeminarLot,
+    SeminarRegistration,
+    SeminarScheduleItem,
+)
 from app.models.dojo_modalidade import DojoModalidade  # noqa: F401
 
