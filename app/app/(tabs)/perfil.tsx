@@ -32,7 +32,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Polygon, Path, Rect } from "react-native-svg";
 
-import { api, clearPersistedSession, persistSession } from "../../src/api/client";
+import { api, clearSessionSafely, persistSession } from "../../src/api/client";
 import { useAuthStore } from "../../src/store/auth";
 import { tokens } from "../../src/ui/tokens";
 
@@ -244,7 +244,6 @@ export default function PerfilScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
-  const clearSession = useAuthStore((s) => s.clearSession);
   const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
 
@@ -252,6 +251,7 @@ export default function PerfilScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const [isPersonalDataOpen, setIsPersonalDataOpen] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -465,9 +465,37 @@ export default function PerfilScreen() {
   }
 
   const handleLogout = async () => {
-    clearSession();
-    await clearPersistedSession();
-    router.replace("/(auth)/login");
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await clearSessionSafely();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      router.replace("/(auth)/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const requestLogout = () => {
+    if (isLoggingOut) return;
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Deseja sair da sua conta agora?");
+      if (confirmed) {
+        void handleLogout();
+      }
+      return;
+    }
+    Alert.alert("Sair da arena", "Deseja sair da sua conta agora?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sair",
+        style: "destructive",
+        onPress: () => {
+          void handleLogout();
+        },
+      },
+    ]);
   };
 
   const changePasswordMutation = useMutation({
@@ -1437,12 +1465,14 @@ export default function PerfilScreen() {
 
         {/* Sair */}
         <Pressable
-          onPress={handleLogout}
+          onPress={requestLogout}
+          disabled={isLoggingOut}
           style={{
             backgroundColor: tokens.color.primary,
             borderRadius: tokens.radius.full,
             paddingVertical: 14,
             alignItems: "center",
+            opacity: isLoggingOut ? 0.7 : 1,
           }}
         >
           <Text
@@ -1452,7 +1482,7 @@ export default function PerfilScreen() {
               fontSize: tokens.text.md,
             }}
           >
-            Sair da arena
+            {isLoggingOut ? "Saindo..." : "Sair da arena"}
           </Text>
         </Pressable>
       </ScrollView>

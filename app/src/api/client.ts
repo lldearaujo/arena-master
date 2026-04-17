@@ -163,6 +163,15 @@ export async function clearPersistedSession() {
   await deleteItem(SESSION_KEY);
 }
 
+export async function clearSessionSafely() {
+  try {
+    await clearPersistedSession();
+  } catch {
+    // Não bloqueia o logoff se storage local falhar.
+  }
+  useAuthStore.getState().clearSession();
+}
+
 export async function restoreSession() {
   const raw = await getItem(SESSION_KEY);
   if (!raw) return;
@@ -276,8 +285,7 @@ api.interceptors.response.use(
 
       return api.request(originalRequest);
     } catch (refreshError) {
-      await clearPersistedSession();
-      useAuthStore.getState().clearSession();
+      await clearSessionSafely();
       processQueue(refreshError, null);
       return Promise.reject(refreshError);
     } finally {
